@@ -1,0 +1,3 @@
+role,school_id,name,khmer_name,user_code,student_id,class,first_name,last_name,email,phone,gender,dob,parent_name,grade,password
+teacher,1,Chan Teacher,,TCH-0001,,,Chan,Teacher,chan.teacher@example.com,0970000002,male,1990-03-15,,,password123
+student,1,Sok Dara,សុខ ដារ៉ា,STU-0001,STU-0001,A1,Sok,Dara,sok.dara@example.com,0970000001,male,2012-01-10,Mr. Dara,7,password123

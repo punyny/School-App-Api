@@ -1,0 +1,433 @@
+{
+  "info": {
+    "_postman_id": "6ea3f77a-5b94-4d60-8948-41e1435de2ec",
+    "name": "School API (Laravel)",
+    "description": "Core API requests for School Management system.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.token) {",
+                  "  pm.environment.set('token', json.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"teacher@example.com\",\n  \"password\": \"password123\",\n  \"device_name\": \"postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/auth/me"
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Attendance",
+      "item": [
+        {
+          "name": "List Attendance",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/attendance?class_id={{class_id}}"
+          }
+        },
+        {
+          "name": "Create Attendance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/attendance",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"student_id\": {{student_id}},\n  \"class_id\": {{class_id}},\n  \"date\": \"2026-03-09\",\n  \"time_start\": \"08:00\",\n  \"time_end\": \"09:00\",\n  \"status\": \"P\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Export Attendance CSV",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/attendance/export/csv?class_id={{class_id}}"
+          }
+        },
+        {
+          "name": "Export Attendance PDF",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/attendance/export/pdf?class_id={{class_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Homework",
+      "item": [
+        {
+          "name": "List Homework",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/homeworks?class_id={{class_id}}"
+          }
+        },
+        {
+          "name": "Create Homework",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/homeworks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"class_id\": {{class_id}},\n  \"subject_id\": {{subject_id}},\n  \"title\": \"Practice Set\",\n  \"question\": \"Complete all questions\",\n  \"due_date\": \"2026-03-15\",\n  \"file_attachments\": [\"https://example.com/files/practice.pdf\"]\n}"
+            }
+          }
+        },
+        {
+          "name": "Update Homework Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/homeworks/{{homework_id}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"student_id\": {{student_id}},\n  \"status\": \"Done\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Export Homework PDF",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/homeworks/export/pdf?class_id={{class_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Scores",
+      "item": [
+        {
+          "name": "List Scores",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/scores?student_id={{student_id}}"
+          }
+        },
+        {
+          "name": "Create Score",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/scores",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"student_id\": {{student_id}},\n  \"subject_id\": {{subject_id}},\n  \"class_id\": {{class_id}},\n  \"exam_score\": 88,\n  \"total_score\": 92,\n  \"month\": 3,\n  \"quarter\": 1,\n  \"period\": \"Midterm\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Export Scores CSV",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/scores/export/csv?student_id={{student_id}}"
+          }
+        },
+        {
+          "name": "Export Scores PDF",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/scores/export/pdf?student_id={{student_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Leave Requests",
+      "item": [
+        {
+          "name": "List Leave Requests",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/leave-requests"
+          }
+        },
+        {
+          "name": "Create Leave Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/leave-requests",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"student_id\": {{student_id}},\n  \"subject_id\": {{subject_id}},\n  \"request_type\": \"Sick Leave\",\n  \"start_date\": \"2026-03-10\",\n  \"start_time\": \"08:00\",\n  \"reason\": \"Fever\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Approve Leave Request",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/leave-requests/{{leave_request_id}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"approved\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Announcements",
+      "item": [
+        {
+          "name": "List Announcements",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/announcements"
+          }
+        },
+        {
+          "name": "Create Announcement",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/announcements",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"school_id\": {{school_id}},\n  \"class_id\": null,\n  \"title\": \"School Event\",\n  \"content\": \"Sports day this Friday\",\n  \"date\": \"2026-03-12\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "item": [
+        {
+          "name": "List Messages",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/messages"
+          }
+        },
+        {
+          "name": "Send Class Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/messages",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"class_id\": {{class_id}},\n  \"content\": \"Submit homework by 5 PM\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "List Notifications",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/notifications"
+          }
+        },
+        {
+          "name": "Mark Notification Read",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/notifications/{{notification_id}}/read-status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"read_status\": true\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Incident Reports",
+      "item": [
+        {
+          "name": "List Incident Reports",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/incident-reports"
+          }
+        },
+        {
+          "name": "Create Incident Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/incident-reports",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"student_id\": {{student_id}},\n  \"description\": \"Fighting in the class\",\n  \"type\": \"Discipline\",\n  \"date\": \"2026-03-09\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Acknowledge Incident",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/incident-reports/{{incident_id}}/acknowledgment",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"acknowledged\": true\n}"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "school_id",
+      "value": "1"
+    },
+    {
+      "key": "class_id",
+      "value": "1"
+    },
+    {
+      "key": "subject_id",
+      "value": "1"
+    },
+    {
+      "key": "student_id",
+      "value": "1"
+    },
+    {
+      "key": "homework_id",
+      "value": "1"
+    },
+    {
+      "key": "leave_request_id",
+      "value": "1"
+    },
+    {
+      "key": "notification_id",
+      "value": "1"
+    },
+    {
+      "key": "incident_id",
+      "value": "1"
+    }
+  ]
+}

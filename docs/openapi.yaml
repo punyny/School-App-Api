@@ -1,0 +1,426 @@
+openapi: 3.0.3
+info:
+  title: School Management API
+  version: 1.0.0
+  description: >
+    API for school roles (super-admin, admin, teacher, student, parent),
+    including attendance, scores, homework, leave requests, announcements,
+    notifications, messages, and incident reports.
+servers:
+  - url: http://127.0.0.1:8000
+security:
+  - bearerAuth: []
+paths:
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Login and receive Sanctum token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                device_name:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+        '422':
+          description: Invalid credentials or validation errors
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Current authenticated user
+      responses:
+        '200':
+          description: User profile
+  /api/attendance:
+    get:
+      tags: [Attendance]
+      summary: List attendance records
+      parameters:
+        - in: query
+          name: class_id
+          schema: { type: integer }
+        - in: query
+          name: student_id
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema: { type: string, enum: [P, A, L] }
+        - in: query
+          name: date_from
+          schema: { type: string, format: date }
+        - in: query
+          name: date_to
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Attendance pagination result
+    post:
+      tags: [Attendance]
+      summary: Create attendance record (teacher/admin/super-admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [student_id, class_id, date, time_start, status]
+              properties:
+                student_id: { type: integer }
+                class_id: { type: integer }
+                date: { type: string, format: date }
+                time_start: { type: string, example: '08:00' }
+                time_end: { type: string, example: '09:00' }
+                status: { type: string, enum: [P, A, L] }
+      responses:
+        '201':
+          description: Created
+  /api/attendance/export/csv:
+    get:
+      tags: [Attendance]
+      summary: Export attendance CSV
+      parameters:
+        - in: query
+          name: class_id
+          schema: { type: integer }
+        - in: query
+          name: student_id
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema: { type: string, enum: [P, A, L] }
+        - in: query
+          name: date_from
+          schema: { type: string, format: date }
+        - in: query
+          name: date_to
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: CSV file stream
+          content:
+            text/csv:
+              schema:
+                type: string
+  /api/attendance/export/pdf:
+    get:
+      tags: [Attendance]
+      summary: Export attendance PDF
+      parameters:
+        - in: query
+          name: class_id
+          schema: { type: integer }
+        - in: query
+          name: student_id
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema: { type: string, enum: [P, A, L] }
+        - in: query
+          name: date_from
+          schema: { type: string, format: date }
+        - in: query
+          name: date_to
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: PDF file download
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+  /api/scores:
+    get:
+      tags: [Scores]
+      summary: List scores
+      parameters:
+        - in: query
+          name: class_id
+          schema: { type: integer }
+        - in: query
+          name: student_id
+          schema: { type: integer }
+        - in: query
+          name: subject_id
+          schema: { type: integer }
+        - in: query
+          name: month
+          schema: { type: integer, minimum: 1, maximum: 12 }
+        - in: query
+          name: quarter
+          schema: { type: integer, minimum: 1, maximum: 4 }
+        - in: query
+          name: period
+          schema: { type: string }
+      responses:
+        '200':
+          description: Scores pagination result
+    post:
+      tags: [Scores]
+      summary: Create score (teacher/admin/super-admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [student_id, subject_id, class_id, exam_score, total_score]
+              properties:
+                student_id: { type: integer }
+                subject_id: { type: integer }
+                class_id: { type: integer }
+                exam_score: { type: number }
+                total_score: { type: number }
+                month: { type: integer }
+                quarter: { type: integer }
+                period: { type: string }
+                grade: { type: string }
+      responses:
+        '201':
+          description: Created
+  /api/scores/export/csv:
+    get:
+      tags: [Scores]
+      summary: Export scores CSV
+      parameters:
+        - in: query
+          name: class_id
+          schema: { type: integer }
+        - in: query
+          name: student_id
+          schema: { type: integer }
+        - in: query
+          name: subject_id
+          schema: { type: integer }
+        - in: query
+          name: month
+          schema: { type: integer }
+        - in: query
+          name: quarter
+          schema: { type: integer }
+        - in: query
+          name: period
+          schema: { type: string }
+      responses:
+        '200':
+          description: CSV file stream
+          content:
+            text/csv:
+              schema:
+                type: string
+  /api/scores/export/pdf:
+    get:
+      tags: [Scores]
+      summary: Export scores PDF
+      parameters:
+        - in: query
+          name: class_id
+          schema: { type: integer }
+        - in: query
+          name: student_id
+          schema: { type: integer }
+        - in: query
+          name: subject_id
+          schema: { type: integer }
+        - in: query
+          name: month
+          schema: { type: integer }
+        - in: query
+          name: quarter
+          schema: { type: integer }
+        - in: query
+          name: period
+          schema: { type: string }
+      responses:
+        '200':
+          description: PDF file download
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+  /api/homeworks/export/pdf:
+    get:
+      tags: [Homeworks]
+      summary: Export homeworks PDF
+      parameters:
+        - in: query
+          name: class_id
+          schema: { type: integer }
+        - in: query
+          name: subject_id
+          schema: { type: integer }
+        - in: query
+          name: due_from
+          schema: { type: string, format: date }
+        - in: query
+          name: due_to
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: PDF file download
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+  /api/announcements:
+    get:
+      tags: [Announcements]
+      summary: List announcements
+      responses:
+        '200':
+          description: Announcements list
+    post:
+      tags: [Announcements]
+      summary: Create announcement (teacher/admin/super-admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, content]
+              properties:
+                title: { type: string }
+                content: { type: string }
+                date: { type: string, format: date }
+                school_id: { type: integer }
+                class_id: { type: integer, nullable: true }
+      responses:
+        '201':
+          description: Created
+  /api/notifications:
+    get:
+      tags: [Notifications]
+      summary: List notifications for current user (or target user by admin/super-admin)
+      responses:
+        '200':
+          description: Notifications list
+    post:
+      tags: [Notifications]
+      summary: Create notification (teacher/admin/super-admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, title, content]
+              properties:
+                user_id: { type: integer }
+                title: { type: string }
+                content: { type: string }
+                date: { type: string, format: date }
+      responses:
+        '201':
+          description: Created
+  /api/notifications/{notification}/read-status:
+    patch:
+      tags: [Notifications]
+      summary: Update read status (owner only)
+      parameters:
+        - in: path
+          name: notification
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [read_status]
+              properties:
+                read_status: { type: boolean }
+      responses:
+        '200':
+          description: Updated
+  /api/messages:
+    get:
+      tags: [Messages]
+      summary: List messages based on role visibility
+      responses:
+        '200':
+          description: Message list
+    post:
+      tags: [Messages]
+      summary: Send message (teacher/admin/super-admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                receiver_id: { type: integer, nullable: true }
+                class_id: { type: integer, nullable: true }
+                content: { type: string }
+      responses:
+        '201':
+          description: Sent
+  /api/incident-reports:
+    get:
+      tags: [Incident Reports]
+      summary: List incident reports
+      responses:
+        '200':
+          description: Incident list
+    post:
+      tags: [Incident Reports]
+      summary: Create incident report (teacher/admin/super-admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [student_id, description]
+              properties:
+                student_id: { type: integer }
+                description: { type: string }
+                date: { type: string, format: date }
+                type: { type: string }
+      responses:
+        '201':
+          description: Created
+  /api/incident-reports/{incidentReport}/acknowledgment:
+    patch:
+      tags: [Incident Reports]
+      summary: Parent acknowledges incident report
+      parameters:
+        - in: path
+          name: incidentReport
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [acknowledged]
+              properties:
+                acknowledged: { type: boolean }
+      responses:
+        '200':
+          description: Updated
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: token
