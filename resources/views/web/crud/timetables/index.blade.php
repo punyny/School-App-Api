@@ -1,8 +1,8 @@
 @extends('web.layouts.app')
 
 @section('content')
-    <h1 class="title">Timetable Management (API)</h1>
-    <p class="subtitle">Manage class schedule rows.</p>
+    <h1 class="title">Timetable Management</h1>
+    <p class="subtitle">Manage class schedules and teaching periods.</p>
 
     <div class="nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>

@@ -6,15 +6,22 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\ChangePasswordRequest;
 use App\Http\Requests\Api\LoginRequest;
 use App\Models\User;
+use App\Notifications\MobileMagicLoginLinkNotification;
 use App\Support\ProfileImageStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class AuthController extends Controller
 {
+    private const MOBILE_MAGIC_LINK_EXPIRY_MINUTES = 15;
+
     public function login(LoginRequest $request): JsonResponse
     {
         $throttleKey = $this->throttleKey($request);
@@ -49,6 +56,14 @@ class AuthController extends Controller
             ], 403);
         }
 
+        if (! $user->hasVerifiedEmail()) {
+            RateLimiter::hit($throttleKey, $decaySeconds);
+
+            return response()->json([
+                'message' => 'Please verify your email address before logging in.',
+            ], 403);
+        }
+
         RateLimiter::clear($throttleKey);
 
         $user->forceFill([
@@ -62,7 +77,98 @@ class AuthController extends Controller
             'message' => 'Login successful.',
             'token' => $token,
             'token_type' => 'Bearer',
-            'user' => $user,
+            'user' => $this->mobileUserPayload($user),
+        ]);
+    }
+
+    public function requestMagicLink(Request $request): JsonResponse
+    {
+        $throttleKey = $this->magicLinkThrottleKey($request);
+        $maxAttempts = (int) config('security.login.max_attempts', 5);
+        if (RateLimiter::tooManyAttempts($throttleKey, $maxAttempts)) {
+            return $this->tooManyAttemptsResponse($throttleKey);
+        }
+
+        $decaySeconds = (int) config('security.login.decay_seconds', 60);
+        $payload = $request->validate([
+            'email' => ['required', 'email', 'max:255'],
+            'device_name' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        RateLimiter::hit($throttleKey, $decaySeconds);
+
+        $email = Str::lower(trim((string) $payload['email']));
+        $user = User::query()->where('email', $email)->first();
+
+        if ($user && $this->canUseMobileMagicLink($user)) {
+            try {
+                $this->sendMobileMagicLoginLink($user, $payload['device_name'] ?? null);
+            } catch (TransportExceptionInterface $exception) {
+                Log::warning('Unable to send mobile magic login email.', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'message' => $exception->getMessage(),
+                ]);
+
+                return response()->json([
+                    'message' => 'Unable to send the sign-in email right now.',
+                ], 500);
+            }
+        }
+
+        return response()->json([
+            'message' => 'If that account exists, we sent a sign-in link to its email address.',
+        ]);
+    }
+
+    public function verifyMagicLink(Request $request): JsonResponse
+    {
+        $payload = $request->validate([
+            'id' => ['required', 'integer', 'exists:users,id'],
+            'token' => ['required', 'string', 'min:32', 'max:255'],
+            'device_name' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $user = User::query()->findOrFail((int) $payload['id']);
+        if (! $this->canUseMobileMagicLink($user)) {
+            return response()->json([
+                'message' => 'This account role is not supported by the mobile app.',
+            ], 403);
+        }
+
+        $cacheKey = $this->magicLinkCacheKey($user->id, (string) $payload['token'], 'mobile');
+        $storedToken = Cache::get($cacheKey);
+
+        if (! is_string($storedToken) || ! hash_equals($storedToken, (string) $payload['token'])) {
+            return response()->json([
+                'message' => 'This sign-in link is invalid or has already been used.',
+            ], 422);
+        }
+
+        if ($user->active === false || $user->is_active === false) {
+            return response()->json([
+                'message' => 'This account is inactive.',
+            ], 403);
+        }
+
+        if (! $user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
+        }
+
+        Cache::forget($cacheKey);
+        $user->forceFill([
+            'last_login' => now(),
+        ])->save();
+
+        $tokenName = $payload['device_name'] ?? ($request->userAgent() ?: 'mobile-magic-link');
+        $token = $user->createToken((string) $tokenName)->plainTextToken;
+        $user->loadMissing($this->profileRelations((string) $user->role));
+
+        return response()->json([
+            'message' => 'Magic link verified successfully.',
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'user' => $this->mobileUserPayload($user),
         ]);
     }
 
@@ -81,7 +187,7 @@ class AuthController extends Controller
         $user->loadMissing($this->profileRelations((string) $user->role));
 
         return response()->json([
-            'user' => $user,
+            'user' => $this->mobileUserPayload($user),
         ]);
     }
 
@@ -134,7 +240,7 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Profile updated successfully.',
-            'user' => $user,
+            'user' => $this->mobileUserPayload($user),
         ]);
     }
 
@@ -172,6 +278,13 @@ class AuthController extends Controller
         return Str::lower($login).'|'.$request->ip().'|api';
     }
 
+    private function magicLinkThrottleKey(Request $request): string
+    {
+        $email = (string) ($request->input('email') ?? '');
+
+        return Str::lower($email).'|'.$request->ip().'|api-magic';
+    }
+
     private function tooManyAttemptsResponse(string $throttleKey): JsonResponse
     {
         $retryAfter = RateLimiter::availableIn($throttleKey);
@@ -182,12 +295,163 @@ class AuthController extends Controller
         ], 429);
     }
 
+    private function canUseMobileMagicLink(User $user): bool
+    {
+        return in_array((string) $user->role, ['teacher', 'student', 'parent'], true)
+            && $user->active !== false
+            && $user->is_active !== false
+            && filled($user->email);
+    }
+
+    private function sendMobileMagicLoginLink(User $user, ?string $deviceName = null): void
+    {
+        $mobileToken = Str::random(64);
+        $webToken = Str::random(64);
+        $expiresInMinutes = self::MOBILE_MAGIC_LINK_EXPIRY_MINUTES;
+        Cache::put(
+            $this->magicLinkCacheKey($user->id, $mobileToken, 'mobile'),
+            $mobileToken,
+            now()->addMinutes($expiresInMinutes)
+        );
+        Cache::put(
+            $this->magicLinkCacheKey($user->id, $webToken, 'web'),
+            $webToken,
+            now()->addMinutes($expiresInMinutes)
+        );
+
+        $mobileUrl = $this->mobileMagicLinkUrl($user, $mobileToken, $deviceName);
+        $fallbackWebUrl = $this->signedWebUrl(
+            'login.magic',
+            now()->addMinutes($expiresInMinutes),
+            [
+                'id' => $user->id,
+                'token' => $webToken,
+            ],
+        );
+        $bridgeUrl = $this->signedWebUrl(
+            'login.mobile',
+            now()->addMinutes($expiresInMinutes),
+            [
+                'id' => $user->id,
+                'token' => $mobileToken,
+                'device_name' => $deviceName,
+                'web_fallback' => $fallbackWebUrl,
+            ],
+        );
+
+        $user->notify(new MobileMagicLoginLinkNotification(
+            bridgeLoginUrl: $bridgeUrl,
+            mobileLoginUrl: $mobileUrl,
+            webFallbackUrl: $fallbackWebUrl,
+            expiresInMinutes: $expiresInMinutes,
+        ));
+    }
+
+    private function mobileMagicLinkUrl(User $user, string $token, ?string $deviceName = null): string
+    {
+        $base = (string) config('app.mobile_magic_link_base', 'schoolmobile://login');
+        $separator = str_contains($base, '?') ? '&' : '?';
+
+        $query = [
+            'id' => (int) $user->id,
+            'token' => $token,
+        ];
+
+        if ($deviceName) {
+            $query['device_name'] = $deviceName;
+        }
+
+        return $base.$separator.http_build_query($query);
+    }
+
+    private function magicLinkCacheKey(int $userId, string $token, string $context): string
+    {
+        return $context.'-magic-login:'.$userId.':'.hash('sha256', $token);
+    }
+
+    /**
+     * @param  array<string, mixed>  $parameters
+     */
+    private function signedWebUrl(string $routeName, \DateTimeInterface $expiration, array $parameters = []): string
+    {
+        $rootUrl = rtrim((string) config('app.url'), '/');
+
+        $relativeUrl = URL::temporarySignedRoute(
+            $routeName,
+            $expiration,
+            $parameters,
+            false
+        );
+
+        if ($rootUrl === '') {
+            return url($relativeUrl);
+        }
+
+        return $rootUrl.$relativeUrl;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mobileUserPayload(User $user): array
+    {
+        $user->loadMissing($this->profileRelations((string) $user->role));
+        $payload = $user->toArray();
+        $school = $user->school;
+        $payload['school_name'] = $school?->name;
+        $payload['school_logo_url'] = $this->extractSchoolLogoUrl(
+            is_array($school?->config_details) ? $school->config_details : null
+        );
+
+        return $payload;
+    }
+
+    private function extractSchoolLogoUrl(?array $configDetails): ?string
+    {
+        if ($configDetails === null) {
+            return null;
+        }
+
+        foreach (['school_logo_url', 'logo_url', 'logo', 'image_url', 'app_logo_url', 'brand_logo_url'] as $key) {
+            $candidate = $this->normalizeLogoUrl($configDetails[$key] ?? null);
+            if ($candidate !== null) {
+                return $candidate;
+            }
+        }
+
+        $branding = $configDetails['branding'] ?? null;
+        if (is_array($branding)) {
+            foreach (['logo_url', 'logo', 'image_url'] as $key) {
+                $candidate = $this->normalizeLogoUrl($branding[$key] ?? null);
+                if ($candidate !== null) {
+                    return $candidate;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeLogoUrl(mixed $value): ?string
+    {
+        $raw = trim((string) ($value ?? ''));
+        if ($raw === '') {
+            return null;
+        }
+
+        if (Str::startsWith($raw, '/')) {
+            return url($raw);
+        }
+
+        return $raw;
+    }
+
     /**
      * @return array<int, string>
      */
     private function profileRelations(string $role): array
     {
-        $relations = ['studentProfile.class', 'studentProfile.parents'];
+        $relations = ['school', 'studentProfile.class', 'studentProfile.parents'];
 
         if (in_array($role, ['parent', 'guardian'], true)) {
             $relations[] = 'children.user';

@@ -24,10 +24,12 @@ class AttendanceStoreRequest extends FormRequest
         return [
             'student_id' => ['required', 'integer', 'exists:students,id'],
             'class_id' => ['required', 'integer', 'exists:classes,id'],
+            'subject_id' => ['nullable', 'integer', 'exists:subjects,id'],
             'date' => ['required', 'date'],
             'time_start' => ['required', 'date_format:H:i'],
             'time_end' => ['nullable', 'date_format:H:i', 'after:time_start'],
             'status' => ['required', 'in:P,A,L'],
+            'remarks' => ['nullable', 'string', 'max:255'],
         ];
     }
 }

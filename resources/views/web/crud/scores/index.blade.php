@@ -1,8 +1,8 @@
 @extends('web.layouts.app')
 
 @section('content')
-    <h1 class="title">Score Management (API)</h1>
-    <p class="subtitle">Input score by class + subject + period (ប្រចាំខែ/ឆមាស/ប្រចាំឆ្នាំ) និងតាមដានចំណាត់ថ្នាក់។</p>
+    <h1 class="title">Score Management</h1>
+    <p class="subtitle">Input scores by class, subject, and assessment period while tracking student ranking.</p>
 
     <div class="nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>

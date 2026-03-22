@@ -1,8 +1,8 @@
 @extends('web.layouts.app')
 
 @section('content')
-    <h1 class="title">Incident Report Management (API)</h1>
-    <p class="subtitle">Track and resolve student incidents.</p>
+    <h1 class="title">Incident Report Management</h1>
+    <p class="subtitle">Track, review, and resolve student incidents.</p>
 
     <div class="nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>

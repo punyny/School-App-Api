@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\SchoolClass;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -103,6 +104,97 @@ class SchoolSetupApiTest extends TestCase
         ])->assertCreated();
 
         $this->assertSame((int) $admin->school_id, (int) $subject->json('data.school_id'));
+    }
+
+    public function test_admin_can_import_user_csv_without_password_column(): void
+    {
+        $this->seed();
+
+        $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $token = $admin->createToken('phpunit')->plainTextToken;
+
+        $csv = implode("\n", [
+            'role,name,user_code,email',
+            'teacher,CSV Imported Teacher,TCH-CSV-01,csv.import.teacher@example.com',
+        ]);
+
+        $response = $this->withToken($token)
+            ->withHeader('Accept', 'application/json')
+            ->post('/api/users/import/csv', [
+                'file' => UploadedFile::fake()->createWithContent('users.csv', $csv),
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.created', 1);
+
+        $teacher = User::query()->where('email', 'csv.import.teacher@example.com')->firstOrFail();
+
+        $this->assertSame('teacher', $teacher->role);
+        $this->assertNotEmpty((string) $teacher->password);
+    }
+
+    public function test_admin_create_auto_generates_username_around_soft_deleted_collision(): void
+    {
+        $this->seed();
+
+        $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $token = $admin->createToken('phpunit')->plainTextToken;
+
+        $existing = User::factory()->teacher((int) $admin->school_id)->create([
+            'email' => 'matt.rorny2023@old-example.test',
+            'username' => null,
+            'name' => 'Old Matt',
+        ]);
+        $existing->delete();
+
+        $response = $this->withToken($token)->postJson('/api/users', [
+            'role' => 'teacher',
+            'name' => 'New Matt',
+            'email' => 'matt.rorny2023@edu.diu.kh',
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.username', 'matt_rorny2023_1');
+
+        $this->assertSoftDeleted('users', ['id' => $existing->id]);
+        $this->assertDatabaseHas('users', [
+            'email' => 'matt.rorny2023@edu.diu.kh',
+            'username' => 'matt_rorny2023_1',
+        ]);
+    }
+
+    public function test_admin_can_recreate_deleted_teacher_with_same_email(): void
+    {
+        $this->seed();
+
+        $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $token = $admin->createToken('phpunit')->plainTextToken;
+
+        $deletedTeacher = User::factory()->teacher((int) $admin->school_id)->create([
+            'name' => 'Deleted Teacher',
+            'email' => 'deleted.teacher@example.com',
+            'user_code' => 'TCH-DELETE-0001',
+        ]);
+        $deletedTeacherId = $deletedTeacher->id;
+        $deletedTeacher->delete();
+
+        $response = $this->withToken($token)->postJson('/api/users', [
+            'role' => 'teacher',
+            'name' => 'Recreated Teacher',
+            'email' => 'deleted.teacher@example.com',
+            'phone' => '010202020',
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.id', $deletedTeacherId)
+            ->assertJsonPath('data.name', 'Recreated Teacher');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $deletedTeacherId,
+            'email' => 'deleted.teacher@example.com',
+            'name' => 'Recreated Teacher',
+            'deleted_at' => null,
+        ]);
     }
 
     public function test_teacher_can_create_timetable_for_own_assignment_only(): void

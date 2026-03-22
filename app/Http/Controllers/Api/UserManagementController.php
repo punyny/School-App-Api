@@ -15,11 +15,15 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class UserManagementController extends Controller
 {
+    private ?string $cachedGeneratedPasswordHash = null;
+
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', User::class);
@@ -27,47 +31,25 @@ class UserManagementController extends Controller
         $authUser = $request->user();
         $authRole = $this->normalizedRole($authUser);
         $filters = $request->validate([
+            'user_id' => ['nullable', 'integer'],
             'school_id' => ['nullable', 'integer', 'exists:schools,id'],
+            'class_id' => ['nullable', 'integer', 'exists:classes,id'],
             'role' => ['nullable', 'in:super-admin,admin,teacher,student,parent,guardian'],
             'active' => ['nullable', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
             'search' => ['nullable', 'string', 'max:255'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'per_page' => ['nullable', 'string', 'max:20'],
         ]);
 
         $query = User::query()
-            ->with(['school', 'studentProfile'])
+            ->with(['school', 'studentProfile.class'])
             ->orderByDesc('id');
 
         $this->applyVisibilityScope($query, $authUser);
+        $this->applyIndexFilters($query, $filters, $authRole);
+        $perPage = $this->resolvePerPage($filters['per_page'] ?? null, $query);
 
-        if (isset($filters['school_id']) && $authRole === 'super-admin') {
-            $query->where('school_id', (int) $filters['school_id']);
-        }
-
-        if (isset($filters['role'])) {
-            $query->where('role', $this->normalizeRoleInput((string) $filters['role']));
-        }
-
-        if (array_key_exists('active', $filters)) {
-            $query->where('active', $filters['active']);
-        }
-
-        if (array_key_exists('is_active', $filters)) {
-            $query->where('is_active', $filters['is_active']);
-        }
-
-        if (isset($filters['search']) && $filters['search'] !== '') {
-            $search = $filters['search'];
-            $query->where(function (Builder $scope) use ($search): void {
-                $scope->where('name', 'like', "%{$search}%")
-                    ->orWhere('username', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%");
-            });
-        }
-
-        return response()->json($query->paginate($filters['per_page'] ?? 20));
+        return response()->json($query->paginate($perPage));
     }
 
     public function show(Request $request, User $user): JsonResponse
@@ -104,7 +86,7 @@ class UserManagementController extends Controller
             'name' => ['required', 'string', 'max:100'],
             'admin_name' => ['nullable', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255'],
-            'password' => ['required', 'string', 'max:255', PasswordRule::defaults()],
+            'password' => ['nullable', 'string', 'max:255', PasswordRule::defaults()],
             'phone' => ['nullable', 'string', 'max:20'],
             'gender' => ['nullable', 'in:male,female,other'],
             'dob' => ['nullable', 'date'],
@@ -161,19 +143,46 @@ class UserManagementController extends Controller
             );
         }
 
-        $this->ensureEmailIsUnique($payload['email'], $targetSchoolId);
-        if (! empty($payload['username'])) {
-            $this->ensureUsernameIsUnique((string) $payload['username']);
+        $requestedUsername = trim((string) ($payload['username'] ?? ''));
+        $requestedUserCode = trim((string) ($payload['user_code'] ?? $payload['admin_id'] ?? ''));
+        $restorableUser = $this->resolveRestorableUserForCreate(
+            (string) $payload['email'],
+            $requestedUsername !== '' ? $requestedUsername : null,
+            $requestedUserCode !== '' ? $requestedUserCode : null,
+            $targetSchoolId
+        );
+
+        if ($restorableUser !== null && $this->normalizedRole($restorableUser) !== $targetRole) {
+            throw ValidationException::withMessages([
+                'email' => ['A deleted account with this email already exists under a different role. Please restore it instead or use another email.'],
+            ]);
+        }
+
+        $this->ensureEmailIsUnique($payload['email'], $targetSchoolId, $restorableUser?->id);
+        if ($requestedUsername !== '') {
+            $this->ensureUsernameIsUnique($requestedUsername, $restorableUser?->id);
         }
         $studentCode = trim((string) ($payload['student_id'] ?? ''));
+        $restorableStudent = $restorableUser !== null
+            ? Student::query()->withTrashed()->where('user_id', $restorableUser->id)->first()
+            : null;
+
+        if ($targetRole === 'student' && $studentCode === '' && $restorableStudent?->student_code) {
+            $studentCode = (string) $restorableStudent->student_code;
+            $payload['student_id'] = $studentCode;
+        }
+
         if ($targetRole === 'student' && $studentCode === '') {
             $studentCode = $this->generateStudentCode((string) ($payload['email'] ?? $payload['name'] ?? 'student'));
             $payload['student_id'] = $studentCode;
         }
 
-        $resolvedUserCode = trim((string) ($payload['user_code'] ?? $payload['admin_id'] ?? ''));
+        $resolvedUserCode = $requestedUserCode;
         if ($targetRole === 'student' && $resolvedUserCode === '' && $studentCode !== '') {
             $resolvedUserCode = $studentCode;
+        }
+        if ($resolvedUserCode === '' && $restorableUser?->user_code) {
+            $resolvedUserCode = (string) $restorableUser->user_code;
         }
         if ($resolvedUserCode === '') {
             $resolvedUserCode = $this->generateUserCode(
@@ -188,7 +197,7 @@ class UserManagementController extends Controller
             ]);
         }
         if ($resolvedUserCode !== '') {
-            $this->ensureUserCodeIsUnique($resolvedUserCode, $targetSchoolId);
+            $this->ensureUserCodeIsUnique($resolvedUserCode, $targetSchoolId, $restorableUser?->id);
         }
 
         $classId = null;
@@ -196,6 +205,7 @@ class UserManagementController extends Controller
             if ($studentCode !== '') {
                 $studentCodeExists = Student::query()->withTrashed()
                     ->where('student_code', $studentCode)
+                    ->when($restorableStudent !== null, fn (Builder $query) => $query->whereKeyNot($restorableStudent->id))
                     ->exists();
 
                 if ($studentCodeExists) {
@@ -227,10 +237,18 @@ class UserManagementController extends Controller
             $this->ensureChildrenAreValid($childIds, $targetSchoolId);
         }
 
-        $user = DB::transaction(function () use ($payload, $targetRole, $targetSchoolId, $classId, $parentIds, $childIds, $resolvedUserCode, $studentCode): User {
-            $passwordHash = Hash::make($payload['password']);
+        $user = DB::transaction(function () use ($payload, $targetRole, $targetSchoolId, $classId, $parentIds, $childIds, $resolvedUserCode, $studentCode, $restorableUser, $restorableStudent): User {
+            $passwordHash = $this->resolvePasswordHash($payload['password'] ?? null);
 
-            $user = User::query()->create([
+            $user = $restorableUser !== null
+                ? User::query()->withTrashed()->findOrFail($restorableUser->id)
+                : new User();
+
+            if ($user->exists && method_exists($user, 'trashed') && $user->trashed()) {
+                $user->restore();
+            }
+
+            $user->fill([
                 'role' => $targetRole,
                 'username' => $payload['username'] ?? null,
                 'user_code' => $resolvedUserCode !== '' ? $resolvedUserCode : null,
@@ -239,6 +257,7 @@ class UserManagementController extends Controller
                 'khmer_name' => $payload['khmer_name'] ?? null,
                 'name' => $payload['name'],
                 'email' => $payload['email'],
+                'email_verified_at' => null,
                 'password' => $passwordHash,
                 'password_hash' => $passwordHash,
                 'phone' => $payload['phone'] ?? null,
@@ -250,24 +269,31 @@ class UserManagementController extends Controller
                 'school_id' => $targetSchoolId,
                 'active' => $payload['active'] ?? true,
                 'is_active' => $payload['is_active'] ?? ($payload['active'] ?? true),
-            ]);
+            ])->save();
 
             if ($targetRole === 'student') {
-                $student = Student::query()->create([
+                $student = $restorableStudent ?? Student::query()->withTrashed()->firstOrNew(['user_id' => $user->id]);
+                if ($student->exists && method_exists($student, 'trashed') && $student->trashed()) {
+                    $student->restore();
+                }
+
+                $student->fill([
                     'user_id' => $user->id,
                     'student_code' => $studentCode !== '' ? $studentCode : null,
                     'class_id' => $classId,
                     'grade' => $payload['grade'] ?? null,
                     'parent_name' => $payload['parent_name'] ?? null,
-                ]);
+                ])->save();
 
-                if ($parentIds !== []) {
-                    $student->parents()->syncWithoutDetaching($parentIds);
-                }
+                $student->parents()->sync($parentIds);
+            } elseif ($restorableStudent !== null && ! $restorableStudent->trashed()) {
+                $restorableStudent->delete();
             }
 
-            if ($targetRole === 'parent' && array_key_exists('child_ids', $payload)) {
+            if ($targetRole === 'parent') {
                 $user->children()->sync($childIds);
+            } elseif ($restorableUser !== null) {
+                $user->children()->sync([]);
             }
 
             return $user;
@@ -285,8 +311,14 @@ class UserManagementController extends Controller
             $user->forceFill(['image_url' => $imageUrl])->save();
         }
 
+        $verificationEmailSent = $this->sendVerificationEmail($user);
+        $message = 'User created successfully.';
+        if ($verificationEmailSent) {
+            $message .= ' Verification email sent.';
+        }
+
         return response()->json([
-            'message' => 'User created successfully.',
+            'message' => $message,
             'data' => $user->load($this->userDetailRelations()),
         ], 201);
     }
@@ -446,7 +478,14 @@ class UserManagementController extends Controller
             $this->ensureChildrenAreValid($childIds, $targetSchoolId);
         }
 
-        DB::transaction(function () use ($user, $payload, $targetRole, $targetSchoolId, $classId, $parentIds, $childIds, $studentCode, $candidateUserCode): void {
+        $emailChanged = array_key_exists('email', $payload)
+            && trim((string) $payload['email']) !== ''
+            && ! hash_equals(
+                mb_strtolower((string) ($user->email ?? '')),
+                mb_strtolower(trim((string) $payload['email']))
+            );
+
+        DB::transaction(function () use ($user, $payload, $targetRole, $targetSchoolId, $classId, $parentIds, $childIds, $studentCode, $candidateUserCode, $emailChanged): void {
             $updates = [];
             foreach (['username', 'user_code', 'first_name', 'last_name', 'khmer_name', 'name', 'email', 'phone', 'gender', 'dob', 'address', 'bio', 'image_url', 'active', 'is_active'] as $field) {
                 if (array_key_exists($field, $payload)) {
@@ -464,6 +503,10 @@ class UserManagementController extends Controller
                 $passwordHash = Hash::make((string) $payload['password']);
                 $updates['password'] = $passwordHash;
                 $updates['password_hash'] = $passwordHash;
+            }
+
+            if ($emailChanged) {
+                $updates['email_verified_at'] = null;
             }
 
             $user->fill($updates)->save();
@@ -520,10 +563,40 @@ class UserManagementController extends Controller
             $user->forceFill(['image_url' => $imageUrl])->save();
         }
 
+        $message = 'User updated successfully.';
+        if ($emailChanged) {
+            $user->tokens()->delete();
+            $verificationEmailSent = $this->sendVerificationEmail($user->fresh());
+            $message .= $verificationEmailSent
+                ? ' Email changed, verification reset, and a new verification email was sent.'
+                : ' Email changed and verification was reset.';
+        }
+
         return response()->json([
-            'message' => 'User updated successfully.',
+            'message' => $message,
             'data' => $user->fresh()->load($this->userDetailRelations()),
         ]);
+    }
+
+    public function resendVerificationEmail(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('update', $user);
+
+        $this->ensureUserAccessible($request->user(), $user);
+
+        if ($user->hasVerifiedEmail()) {
+            return response()->json([
+                'message' => 'This email address is already verified.',
+            ]);
+        }
+
+        $sent = $this->sendVerificationEmail($user);
+
+        return response()->json([
+            'message' => $sent
+                ? 'Verification email sent successfully.'
+                : 'Unable to send verification email for this user.',
+        ], $sent ? 200 : 422);
     }
 
     public function destroy(Request $request, User $user): JsonResponse
@@ -548,6 +621,70 @@ class UserManagementController extends Controller
 
         return response()->json([
             'message' => 'User deleted successfully.',
+        ]);
+    }
+
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', User::class);
+
+        $authUser = $request->user();
+        $authRole = $this->normalizedRole($authUser);
+        $payload = $request->validate([
+            'user_ids' => ['required', 'array', 'min:1'],
+            'user_ids.*' => ['integer'],
+        ]);
+
+        $userIds = collect($payload['user_ids'])
+            ->map(fn (mixed $id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($userIds->isEmpty()) {
+            throw ValidationException::withMessages([
+                'user_ids' => ['Please select at least one user to delete.'],
+            ]);
+        }
+
+        $query = User::query()->whereIn('id', $userIds->all());
+        $this->applyVisibilityScope($query, $authUser);
+
+        $query->whereKeyNot($authUser->id);
+
+        $users = $query->get();
+
+        if ($users->isEmpty()) {
+            throw ValidationException::withMessages([
+                'user_ids' => ['No deletable users were found in your selection.'],
+            ]);
+        }
+
+        DB::transaction(function () use ($users): void {
+            foreach ($users as $user) {
+                if ($this->normalizedRole($user) === 'student') {
+                    $user->studentProfile?->delete();
+                }
+
+                $user->delete();
+            }
+        });
+
+        $deletedCount = $users->count();
+        $requestedCount = $userIds->count();
+        $skippedCount = max(0, $requestedCount - $deletedCount);
+
+        $message = "Deleted {$deletedCount} user(s) successfully.";
+        if ($skippedCount > 0) {
+            $message .= " Skipped {$skippedCount} user(s) that you cannot delete.";
+        }
+
+        return response()->json([
+            'message' => $message,
+            'data' => [
+                'deleted' => $deletedCount,
+                'skipped' => $skippedCount,
+            ],
         ]);
     }
 
@@ -581,11 +718,15 @@ class UserManagementController extends Controller
     public function importCsv(Request $request): JsonResponse
     {
         $this->authorize('create', User::class);
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(120);
+        }
+        @ini_set('max_execution_time', '120');
 
         $payload = $request->validate([
             'file' => ['required', 'file', 'mimes:csv,txt'],
             'school_id' => ['nullable', 'integer', 'exists:schools,id'],
-            'role' => ['nullable', 'in:teacher,student'],
+            'role' => ['nullable', 'in:teacher,student,parent'],
         ]);
 
         $authUser = $request->user();
@@ -625,9 +766,9 @@ class UserManagementController extends Controller
                 if ($rowRole === '') {
                     $rowRole = $defaultRole;
                 }
-                if (! in_array($rowRole, ['teacher', 'student'], true)) {
+                if (! in_array($rowRole, ['teacher', 'student', 'parent'], true)) {
                     throw ValidationException::withMessages([
-                        'role' => ['CSV role must be teacher or student.'],
+                        'role' => ['CSV role must be teacher, student, or parent.'],
                     ]);
                 }
 
@@ -646,13 +787,18 @@ class UserManagementController extends Controller
 
                 $userCode = $this->csvValue($row, ['user_code', 'user code', 'teacher_id', 'teacher id', 'id']);
                 $studentCode = $this->csvValue($row, ['student_id', 'student id']);
-                if ($rowRole === 'student' && $studentCode === '') {
-                    $studentCode = $userCode;
-                }
-
                 $firstName = $this->csvValue($row, ['first_name', 'first name', 'fist_name', 'fist name']);
                 $lastName = $this->csvValue($row, ['last_name', 'last name']);
                 $khmerName = $this->csvValue($row, ['khmer_name', 'khmer name', 'name_kh', 'kh_name']);
+                $phone = $this->csvValue($row, ['phone', 'phone_number', 'phone number']);
+                $email = $this->csvValue($row, ['email', 'e-mail']);
+
+                if ($email === '') {
+                    throw ValidationException::withMessages([
+                        'email' => ['email is required.'],
+                    ]);
+                }
+
                 $name = $this->csvValue($row, ['name', 'full_name', 'full name']);
                 if ($name === '') {
                     $name = trim($firstName.' '.$lastName);
@@ -665,43 +811,29 @@ class UserManagementController extends Controller
                         'name' => ['name (or first_name + last_name) is required.'],
                     ]);
                 }
-                if ($rowRole === 'student' && $khmerName === '') {
-                    throw ValidationException::withMessages([
-                        'khmer_name' => ['khmer_name is required for student CSV import.'],
-                    ]);
-                }
-                if ($rowRole === 'student' && $studentCode === '') {
-                    throw ValidationException::withMessages([
-                        'student_id' => ['student_id is required for student CSV import.'],
-                    ]);
-                }
-                if ($rowRole === 'student' && $userCode === '') {
-                    $userCode = $studentCode;
+
+                if ($khmerName === '') {
+                    $khmerName = $name;
                 }
 
                 $classId = null;
                 if ($rowRole === 'student') {
-                    $classId = $this->resolveClassIdFromImportRow($row, $rowSchoolId);
-                }
-
-                $email = $this->csvValue($row, ['email', 'e-mail']);
-                if ($email === '') {
-                    $seed = $rowRole === 'student'
-                        ? ($studentCode !== '' ? $studentCode : $name)
-                        : ($userCode !== '' ? $userCode : $name);
-                    $email = $this->generatePlaceholderEmail($seed, $rowSchoolId);
+                    if ($studentCode === '') {
+                        $studentCode = $this->generateStudentCode($email !== '' ? $email : $name);
+                    }
+                    if ($userCode === '') {
+                        $userCode = $studentCode;
+                    }
+                    $classId = $this->resolveClassIdFromImportRow($row, $rowSchoolId, false);
                 }
 
                 $dob = $this->normalizeDobFromCsv($this->csvValue($row, ['dob', 'date_of_birth', 'date of birth', 'birth_date', 'birth date']));
                 $gender = $this->normalizeGenderFromCsv($this->csvValue($row, ['gender', 'sex']));
-                $phone = $this->csvValue($row, ['phone', 'phone_number', 'phone number']);
                 $parentName = $this->csvValue($row, ['parent_name', 'parent name', 'guardian_name', 'guardian name']);
                 $grade = $this->csvValue($row, ['grade', 'grade_level', 'grade level']);
                 $password = $this->csvValue($row, ['password']);
-                if ($password === '') {
-                    $password = 'password123';
-                }
-                $passwordHash = Hash::make($password);
+                $hasPassword = $password !== '';
+                $passwordHash = $hasPassword ? Hash::make($password) : null;
 
                 DB::transaction(function () use (
                     $rowRole,
@@ -715,6 +847,7 @@ class UserManagementController extends Controller
                     $phone,
                     $gender,
                     $dob,
+                    $hasPassword,
                     $passwordHash,
                     $classId,
                     $studentCode,
@@ -769,6 +902,7 @@ class UserManagementController extends Controller
                     $wasCreated = false;
                     if (! $user) {
                         $wasCreated = true;
+                        $storedPasswordHash = $passwordHash ?? $this->resolvePasswordHash(null);
                         $user = User::query()->create([
                             'role' => $rowRole,
                             'user_code' => $userCode !== '' ? $userCode : null,
@@ -780,8 +914,8 @@ class UserManagementController extends Controller
                             'phone' => $phone !== '' ? $phone : null,
                             'gender' => $gender,
                             'dob' => $dob,
-                            'password' => $passwordHash,
-                            'password_hash' => $passwordHash,
+                            'password' => $storedPasswordHash,
+                            'password_hash' => $storedPasswordHash,
                             'school_id' => $rowSchoolId,
                             'active' => true,
                         ]);
@@ -791,13 +925,13 @@ class UserManagementController extends Controller
                         }
 
                         $existingRole = $this->normalizedRole($user);
-                        if (in_array($existingRole, ['super-admin', 'admin', 'parent', 'guardian'], true) && $existingRole !== $rowRole) {
+                        if ($existingRole !== $rowRole) {
                             throw ValidationException::withMessages([
-                                'role' => ["Cannot import over existing {$user->role} account {$user->email}."],
+                                'role' => ["Cannot import over existing {$user->role} account {$user->email} with role {$rowRole}."],
                             ]);
                         }
 
-                        $user->fill([
+                        $updates = [
                             'role' => $rowRole,
                             'user_code' => $userCode !== '' ? $userCode : $user->user_code,
                             'first_name' => $firstName !== '' ? $firstName : $user->first_name,
@@ -808,10 +942,15 @@ class UserManagementController extends Controller
                             'phone' => $phone !== '' ? $phone : $user->phone,
                             'gender' => $gender ?? $user->gender,
                             'dob' => $dob ?? $user->dob,
-                            'password' => $passwordHash,
-                            'password_hash' => $passwordHash,
                             'school_id' => $rowSchoolId,
-                        ])->save();
+                        ];
+
+                        if ($hasPassword && $passwordHash !== null) {
+                            $updates['password'] = $passwordHash;
+                            $updates['password_hash'] = $passwordHash;
+                        }
+
+                        $user->fill($updates)->save();
                     }
 
                     if ($rowRole === 'student') {
@@ -888,6 +1027,83 @@ class UserManagementController extends Controller
         }
 
         $query->whereRaw('1 = 0');
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function applyIndexFilters(Builder $query, array $filters, string $authRole): void
+    {
+        if (isset($filters['user_id'])) {
+            $query->whereKey((int) $filters['user_id']);
+        }
+
+        if (isset($filters['school_id']) && $authRole === 'super-admin') {
+            $query->where('school_id', (int) $filters['school_id']);
+        }
+
+        if (isset($filters['class_id'])) {
+            $query->whereHas('studentProfile', fn (Builder $studentQuery) => $studentQuery->where('class_id', (int) $filters['class_id']));
+        }
+
+        if (isset($filters['role'])) {
+            $query->where('role', $this->normalizeRoleInput((string) $filters['role']));
+        }
+
+        if (array_key_exists('active', $filters)) {
+            $query->where('active', $filters['active']);
+        }
+
+        if (array_key_exists('is_active', $filters)) {
+            $query->where('is_active', $filters['is_active']);
+        }
+
+        if (isset($filters['search']) && $filters['search'] !== '') {
+            $search = trim((string) $filters['search']);
+            $query->where(function (Builder $scope) use ($search): void {
+                $appliedBase = false;
+                if (ctype_digit($search)) {
+                    $scope->whereKey((int) $search);
+                    $appliedBase = true;
+                }
+
+                $method = $appliedBase ? 'orWhere' : 'where';
+                $scope->{$method}('name', 'like', "%{$search}%")
+                    ->orWhere('username', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('user_code', 'like', "%{$search}%");
+            });
+        }
+    }
+
+    private function resolvePerPage(mixed $perPageInput, Builder $query): int
+    {
+        $raw = trim((string) ($perPageInput ?? ''));
+        if ($raw === '') {
+            return 20;
+        }
+
+        if (Str::lower($raw) === 'all') {
+            $total = (clone $query)->toBase()->getCountForPagination();
+
+            return max(1, min($total, 5000));
+        }
+
+        if (! ctype_digit($raw)) {
+            throw ValidationException::withMessages([
+                'per_page' => ['per_page must be a number or all.'],
+            ]);
+        }
+
+        $value = (int) $raw;
+        if ($value < 1 || $value > 5000) {
+            throw ValidationException::withMessages([
+                'per_page' => ['per_page must be between 1 and 5000, or all.'],
+            ]);
+        }
+
+        return $value;
     }
 
     private function ensureUserAccessible(User $authUser, User $targetUser): void
@@ -967,6 +1183,58 @@ class UserManagementController extends Controller
         }
 
         return (int) $authUser->school_id;
+    }
+
+    private function resolveRestorableUserForCreate(
+        string $email,
+        ?string $username,
+        ?string $userCode,
+        ?int $schoolId
+    ): ?User {
+        $candidateIds = [];
+
+        $email = trim($email);
+        if ($email !== '') {
+            $candidateIds = array_merge($candidateIds, User::query()->onlyTrashed()
+                ->where('email', $email)
+                ->when($schoolId === null, fn (Builder $query) => $query->whereNull('school_id'))
+                ->when($schoolId !== null, fn (Builder $query) => $query->where('school_id', $schoolId))
+                ->pluck('id')
+                ->map(fn (mixed $id): int => (int) $id)
+                ->all());
+        }
+
+        if ($username !== null && trim($username) !== '') {
+            $candidateIds = array_merge($candidateIds, User::query()->onlyTrashed()
+                ->where('username', trim($username))
+                ->pluck('id')
+                ->map(fn (mixed $id): int => (int) $id)
+                ->all());
+        }
+
+        if ($userCode !== null && trim($userCode) !== '') {
+            $candidateIds = array_merge($candidateIds, User::query()->onlyTrashed()
+                ->where('user_code', trim($userCode))
+                ->when($schoolId === null, fn (Builder $query) => $query->whereNull('school_id'))
+                ->when($schoolId !== null, fn (Builder $query) => $query->where('school_id', $schoolId))
+                ->pluck('id')
+                ->map(fn (mixed $id): int => (int) $id)
+                ->all());
+        }
+
+        $candidateIds = array_values(array_unique(array_filter($candidateIds)));
+
+        if ($candidateIds === []) {
+            return null;
+        }
+
+        if (count($candidateIds) > 1) {
+            throw ValidationException::withMessages([
+                'email' => ['Multiple deleted accounts match this information. Please restore the correct account instead of creating a new one.'],
+            ]);
+        }
+
+        return User::query()->withTrashed()->find($candidateIds[0]);
     }
 
     private function ensureEmailIsUnique(string $email, ?int $schoolId, ?int $ignoreUserId = null): void
@@ -1100,10 +1368,14 @@ class UserManagementController extends Controller
     /**
      * @param  array<string, mixed>  $row
      */
-    private function resolveClassIdFromImportRow(array $row, int $schoolId): int
+    private function resolveClassIdFromImportRow(array $row, int $schoolId, bool $required = true): ?int
     {
         $rawClass = $this->csvValue($row, ['class_id', 'class id', 'class_name', 'class name', 'class']);
         if ($rawClass === '') {
+            if (! $required) {
+                return null;
+            }
+
             throw ValidationException::withMessages([
                 'class' => ['class (or class_id) is required for student import row.'],
             ]);
@@ -1564,6 +1836,42 @@ class UserManagementController extends Controller
         ]);
 
         return (int) $school->id;
+    }
+
+    private function sendVerificationEmail(User $user): bool
+    {
+        $email = trim((string) $user->email);
+        if ($email === '') {
+            return false;
+        }
+
+        try {
+            $user->sendEmailVerificationNotification();
+        } catch (TransportExceptionInterface $exception) {
+            Log::warning('Unable to send verification email.', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private function resolvePasswordHash(mixed $password): string
+    {
+        $plain = trim((string) ($password ?? ''));
+        if ($plain === '') {
+            if ($this->cachedGeneratedPasswordHash === null) {
+                $this->cachedGeneratedPasswordHash = Hash::make(Str::random(40));
+            }
+
+            return $this->cachedGeneratedPasswordHash;
+        }
+
+        return Hash::make($plain);
     }
 
     private function normalizeIncomingUserAliases(Request $request, bool $isCreate): void

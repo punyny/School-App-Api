@@ -1,8 +1,8 @@
 @extends('web.layouts.app')
 
 @section('content')
-    <h1 class="title">Announcement Management (API)</h1>
-    <p class="subtitle">School announcements with audience targeting: all, role, class, or specific user.</p>
+    <h1 class="title">Announcement Management</h1>
+    <p class="subtitle">Publish announcements for all users, roles, classes, or specific users.</p>
 
     <div class="nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>

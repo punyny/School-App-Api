@@ -82,6 +82,7 @@ class ClassController extends Controller
             'data' => $schoolClass->load([
                 'school',
                 'students.user',
+                'students.parents',
                 'subjects',
                 'teachers',
                 'timetables.subject',

@@ -5,12 +5,12 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\InteractsWithInternalApi;
 use App\Models\User;
-use App\Support\PasswordRule;
 use App\Services\InternalApiClient;
 use App\Support\ProfileImageStorage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -22,12 +22,29 @@ class UserCrudController extends Controller
     public function index(Request $request, InternalApiClient $api): View|RedirectResponse
     {
         $filters = $request->validate([
+            'user_id' => ['nullable', 'integer'],
             'school_id' => ['nullable', 'integer'],
+            'class_id' => ['nullable', 'integer'],
             'role' => ['nullable', 'in:super-admin,admin,teacher,student,parent'],
             'active' => ['nullable', 'in:0,1'],
             'search' => ['nullable', 'string', 'max:255'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'per_page' => ['nullable', 'string', 'max:20'],
         ]);
+
+        $rawPerPage = trim((string) ($filters['per_page'] ?? ''));
+        if ($rawPerPage !== '') {
+            if (Str::lower($rawPerPage) === 'all') {
+                $filters['per_page'] = 'all';
+            } elseif (ctype_digit($rawPerPage) && (int) $rawPerPage >= 1 && (int) $rawPerPage <= 5000) {
+                $filters['per_page'] = (string) ((int) $rawPerPage);
+            } else {
+                throw ValidationException::withMessages([
+                    'per_page' => ['per_page must be 20 or all.'],
+                ]);
+            }
+        } else {
+            unset($filters['per_page']);
+        }
 
         $result = $api->get($request, '/api/users', array_filter($filters, fn ($v) => $v !== null && $v !== ''));
 
@@ -42,7 +59,10 @@ class UserCrudController extends Controller
             'meta' => $payload,
             'filters' => $filters,
             'userRole' => $request->user()->role,
-        ]);
+            'schoolOptions' => $request->user()->role === 'super-admin'
+                ? $this->loadSchoolSelectOptions($request, $api)
+                : [],
+        ] + $this->loadAcademicSelectOptions($request, $api, true, false, false));
     }
 
     public function create(Request $request, InternalApiClient $api): View
@@ -72,10 +92,15 @@ class UserCrudController extends Controller
         $result = $api->post($request, '/api/users', $payload);
 
         if ($result['status'] !== 201) {
+            if ($redirect = $this->restoreDeletedUserAndRedirectToEdit($request, $api, $payload, $result)) {
+                return $redirect;
+            }
+
             return back()->withInput()->withErrors($this->extractErrors($result));
         }
 
-        return redirect()->away(route('panel.users.index', [], false))->with('success', 'User created successfully.');
+        return redirect()->away(route('panel.users.index', [], false))
+            ->with('success', (string) ($result['data']['message'] ?? 'User created successfully.'));
     }
 
     public function edit(Request $request, int $user, InternalApiClient $api): View|RedirectResponse
@@ -125,7 +150,19 @@ class UserCrudController extends Controller
             return back()->withInput()->withErrors($this->extractErrors($result));
         }
 
-        return redirect()->away(route('panel.users.index', [], false))->with('success', 'User updated successfully.');
+        return redirect()->away(route('panel.users.index', [], false))
+            ->with('success', (string) ($result['data']['message'] ?? 'User updated successfully.'));
+    }
+
+    public function resendVerification(Request $request, int $user, InternalApiClient $api): RedirectResponse
+    {
+        $result = $api->post($request, '/api/users/'.$user.'/resend-verification-email');
+
+        if (($result['status'] ?? 0) !== 200) {
+            return back()->withErrors($this->extractErrors($result));
+        }
+
+        return back()->with('success', (string) ($result['data']['message'] ?? 'Verification email sent successfully.'));
     }
 
     public function destroy(Request $request, int $user, InternalApiClient $api): RedirectResponse
@@ -139,6 +176,23 @@ class UserCrudController extends Controller
         return redirect()->away(route('panel.users.index', [], false))->with('success', 'User deleted successfully.');
     }
 
+    public function bulkDestroy(Request $request, InternalApiClient $api): RedirectResponse
+    {
+        $payload = $request->validate([
+            'user_ids' => ['required', 'array', 'min:1'],
+            'user_ids.*' => ['integer'],
+        ]);
+
+        $result = $api->post($request, '/api/users/bulk-delete', $payload);
+
+        if (($result['status'] ?? 0) !== 200) {
+            return back()->withErrors($this->extractErrors($result));
+        }
+
+        return redirect()->away(route('panel.users.index', [], false))
+            ->with('success', (string) ($result['data']['message'] ?? 'Selected users deleted successfully.'));
+    }
+
     public function importCsv(Request $request, InternalApiClient $api): RedirectResponse
     {
         if ($guard = $this->ensureAdminHasSchoolContext($request)) {
@@ -147,7 +201,7 @@ class UserCrudController extends Controller
 
         $payload = $request->validate([
             'csv_file' => ['required', 'file', 'mimes:csv,txt'],
-            'role' => ['nullable', 'in:teacher,student'],
+            'role' => ['nullable', 'in:teacher,student,parent'],
             'school_id' => ['nullable', 'integer'],
         ]);
 
@@ -208,9 +262,6 @@ class UserCrudController extends Controller
     private function validatePayload(Request $request, bool $isCreate): array
     {
         $roleOptions = $this->allowedRolesFor($request->user());
-        $passwordRule = $isCreate
-            ? ['required', 'string', 'max:255', PasswordRule::defaults()]
-            : ['nullable', 'string', 'max:255', PasswordRule::defaults()];
 
         $payload = $request->validate([
             'school_id' => ['nullable', 'integer'],
@@ -223,7 +274,6 @@ class UserCrudController extends Controller
             'name' => ['nullable', 'string', 'max:100'],
             'admin_name' => ['nullable', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255'],
-            'password' => $passwordRule,
             'phone' => ['nullable', 'string', 'max:20'],
             'gender' => ['nullable', 'in:male,female,other'],
             'dob' => ['nullable', 'date'],
@@ -305,10 +355,6 @@ class UserCrudController extends Controller
             }
         }
 
-        if (! $isCreate && empty($payload['password'])) {
-            unset($payload['password']);
-        }
-
         if (($payload['role'] ?? '') === 'parent') {
             unset($payload['class_id'], $payload['student_id'], $payload['grade'], $payload['parent_name'], $payload['parent_ids']);
             unset($payload['admin_name'], $payload['admin_id']);
@@ -381,6 +427,70 @@ class UserCrudController extends Controller
         return back()->withInput()->withErrors([
             'school_id' => ['Your admin account has no school assigned. Please login as super-admin and assign a school first.'],
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array{status:int, data:array<string,mixed>|null}  $result
+     */
+    private function restoreDeletedUserAndRedirectToEdit(
+        Request $request,
+        InternalApiClient $api,
+        array $payload,
+        array $result
+    ): ?RedirectResponse {
+        $errorBag = $this->extractErrors($result);
+        $messages = collect($errorBag)->flatten()->filter(fn ($message) => is_string($message));
+
+        $shouldRestore = $messages->contains(
+            fn (string $message): bool => str_contains($message, 'Please restore it instead')
+        );
+
+        if (! $shouldRestore) {
+            return null;
+        }
+
+        $deletedUser = $this->findDeletedUserByPayload($request, $payload);
+        if (! $deletedUser) {
+            return null;
+        }
+
+        $restoreResult = $api->post($request, '/api/users/'.$deletedUser->id.'/restore');
+        if (($restoreResult['status'] ?? 0) !== 200) {
+            return back()->withInput()->withErrors($this->extractErrors($restoreResult));
+        }
+
+        return redirect()->away(route('panel.users.edit', ['user' => $deletedUser->id], false))
+            ->with('success', 'Deleted account restored successfully. Please update the role and save.');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function findDeletedUserByPayload(Request $request, array $payload): ?User
+    {
+        $email = trim((string) ($payload['email'] ?? ''));
+        if ($email === '') {
+            return null;
+        }
+
+        $query = User::query()->onlyTrashed()->where('email', $email);
+        $actor = $request->user();
+
+        if (($actor?->role ?? null) === 'super-admin') {
+            if (array_key_exists('school_id', $payload)) {
+                $schoolId = $payload['school_id'];
+                if ($schoolId === null || $schoolId === '') {
+                    $query->whereNull('school_id');
+                } else {
+                    $query->where('school_id', (int) $schoolId);
+                }
+            }
+        } elseif ($actor?->school_id) {
+            $query->where('school_id', (int) $actor->school_id);
+        }
+
+        return $query->orderByDesc('deleted_at')->first();
     }
 
     /**

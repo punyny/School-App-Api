@@ -20,11 +20,13 @@
             <tr>
                 <th>ID</th>
                 <th>Date</th>
+                <th>Subject</th>
                 <th>Time Start</th>
                 <th>Time End</th>
                 <th>Status</th>
                 <th>Student</th>
                 <th>Class</th>
+                <th>Remarks</th>
             </tr>
         </thead>
         <tbody>
@@ -32,19 +34,20 @@
                 <tr>
                     <td>{{ $row->id }}</td>
                     <td>{{ $row->date }}</td>
+                    <td>{{ $row->subject?->name ?? 'General Attendance' }}</td>
                     <td>{{ $row->time_start }}</td>
                     <td>{{ $row->time_end }}</td>
                     <td>{{ $row->status }}</td>
                     <td>{{ $row->student?->user?->name }}</td>
                     <td>{{ $row->class?->name }}</td>
+                    <td>{{ $row->remarks }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7">No data.</td>
+                    <td colspan="9">No data.</td>
                 </tr>
             @endforelse
         </tbody>
     </table>
 </body>
 </html>
-

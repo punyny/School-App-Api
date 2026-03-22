@@ -1,8 +1,8 @@
 @extends('web.layouts.app')
 
 @section('content')
-    <h1 class="title">Leave Request Management (API)</h1>
-    <p class="subtitle">Students/parents submit requests. Teachers/admin review and approve.</p>
+    <h1 class="title">Leave Request Management</h1>
+    <p class="subtitle">Review and manage leave requests submitted by students and parents.</p>
 
     <div class="nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>

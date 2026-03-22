@@ -8,11 +8,13 @@ use App\Http\Requests\Api\AttendanceUpdateRequest;
 use App\Models\Attendance;
 use App\Models\SchoolClass;
 use App\Models\Student;
+use App\Models\Subject;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -25,40 +27,26 @@ class AttendanceController extends Controller
         $filters = $request->validate([
             'class_id' => ['nullable', 'integer', 'exists:classes,id'],
             'student_id' => ['nullable', 'integer', 'exists:students,id'],
+            'subject_id' => ['nullable', 'integer', 'exists:subjects,id'],
             'status' => ['nullable', 'in:P,A,L'],
+            'period_type' => ['nullable', 'in:month,semester,year,range'],
+            'month' => ['nullable', 'date_format:Y-m'],
+            'year' => ['nullable', 'integer', 'digits:4', 'min:2000', 'max:2100'],
+            'semester' => ['nullable', 'integer', 'in:1,2'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
-            'sort_by' => ['nullable', 'in:id,date,time_start,time_end,status,created_at'],
+            'sort_by' => ['nullable', 'in:id,date,time_start,time_end,status,created_at,subject_id'],
             'sort_dir' => ['nullable', 'in:asc,desc'],
         ]);
 
         $query = Attendance::query()
-            ->with(['student.user', 'class'])
+            ->with(['student.user', 'class', 'subject'])
             ->orderBy($filters['sort_by'] ?? 'date', $filters['sort_dir'] ?? 'desc')
             ->orderBy('time_start', 'desc');
 
         $this->applyVisibilityScope($query, $request->user());
-
-        if (isset($filters['class_id'])) {
-            $query->where('class_id', $filters['class_id']);
-        }
-
-        if (isset($filters['student_id'])) {
-            $query->where('student_id', $filters['student_id']);
-        }
-
-        if (isset($filters['status'])) {
-            $query->where('status', $filters['status']);
-        }
-
-        if (isset($filters['date_from'])) {
-            $query->whereDate('date', '>=', $filters['date_from']);
-        }
-
-        if (isset($filters['date_to'])) {
-            $query->whereDate('date', '<=', $filters['date_to']);
-        }
+        $this->applyAttendanceFilters($query, $filters);
 
         return response()->json($query->paginate($filters['per_page'] ?? 20));
     }
@@ -68,7 +56,199 @@ class AttendanceController extends Controller
         $this->authorize('view', $attendance);
 
         return response()->json([
-            'data' => $attendance->load(['student.user', 'class']),
+            'data' => $attendance->load(['student.user', 'class', 'subject']),
+        ]);
+    }
+
+    public function monthlyReport(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Attendance::class);
+
+        $filters = $request->validate([
+            'class_id' => ['nullable', 'integer', 'exists:classes,id'],
+            'student_id' => ['nullable', 'integer', 'exists:students,id'],
+            'subject_id' => ['nullable', 'integer', 'exists:subjects,id'],
+            'period_type' => ['nullable', 'in:month,semester,year,range'],
+            'month' => ['nullable', 'date_format:Y-m'],
+            'year' => ['nullable', 'integer', 'digits:4', 'min:2000', 'max:2100'],
+            'semester' => ['nullable', 'integer', 'in:1,2'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+        ]);
+
+        $dateRange = $this->resolveDateRange([
+            'period_type' => $filters['period_type'] ?? null,
+            'month' => $filters['month'] ?? null,
+            'year' => $filters['year'] ?? null,
+            'semester' => $filters['semester'] ?? null,
+            'date_from' => $filters['date_from'] ?? null,
+            'date_to' => $filters['date_to'] ?? null,
+        ]);
+        $reportMonth = (string) ($filters['month'] ?? '');
+
+        $query = Attendance::query()
+            ->with(['student.user', 'class', 'subject'])
+            ->orderBy('date')
+            ->orderBy('time_start');
+
+        $this->applyVisibilityScope($query, $request->user());
+        $this->applyAttendanceFilters($query, [
+            'class_id' => $filters['class_id'] ?? null,
+            'student_id' => $filters['student_id'] ?? null,
+            'subject_id' => $filters['subject_id'] ?? null,
+            'date_from' => $dateRange['date_from'],
+            'date_to' => $dateRange['date_to'],
+        ]);
+
+        $rows = $query->get();
+        $absenceEntries = $rows
+            ->filter(fn (Attendance $attendance): bool => in_array((string) $attendance->status, ['A', 'L'], true))
+            ->values();
+
+        $absenceRows = $absenceEntries
+            ->map(function (Attendance $attendance): array {
+                return [
+                    'attendance_id' => (int) $attendance->id,
+                    'student_id' => (int) $attendance->student_id,
+                    'student_name' => (string) ($attendance->student?->user?->name ?? 'Student'),
+                    'class_id' => (int) $attendance->class_id,
+                    'class_name' => (string) ($attendance->class?->name ?? 'Class'),
+                    'subject_id' => $attendance->subject_id ? (int) $attendance->subject_id : null,
+                    'subject_name' => (string) ($attendance->subject?->name ?? 'General Attendance'),
+                    'date' => (string) $attendance->date,
+                    'status' => (string) $attendance->status,
+                    'remarks' => (string) ($attendance->remarks ?? ''),
+                    'time_start' => (string) $attendance->time_start,
+                    'time_end' => (string) ($attendance->time_end ?? ''),
+                    'time_slot' => trim(((string) $attendance->time_start).' - '.((string) ($attendance->time_end ?? '-'))),
+                ];
+            })
+            ->values();
+
+        $subjectRows = $rows
+            ->filter(fn (Attendance $attendance): bool => in_array((string) $attendance->status, ['A', 'L'], true))
+            ->groupBy(function (Attendance $attendance): string {
+                return implode('|', [
+                    (int) $attendance->student_id,
+                    (int) $attendance->class_id,
+                    (int) ($attendance->subject_id ?? 0),
+                    (string) $attendance->time_start,
+                    (string) ($attendance->time_end ?? ''),
+                ]);
+            })
+            ->map(function ($entries) {
+                $sortedEntries = $entries->sortBy('date')->values();
+                /** @var Attendance $first */
+                $first = $sortedEntries->first();
+                $presentCount = $sortedEntries->where('status', 'P')->count();
+                $absentCount = $sortedEntries->where('status', 'A')->count();
+                $leaveCount = $sortedEntries->where('status', 'L')->count();
+                $affectedDates = $sortedEntries
+                    ->filter(fn (Attendance $attendance): bool => in_array($attendance->status, ['A', 'L'], true))
+                    ->map(fn (Attendance $attendance): array => [
+                        'date' => (string) $attendance->date,
+                        'status' => (string) $attendance->status,
+                        'remarks' => (string) ($attendance->remarks ?? ''),
+                    ])
+                    ->values()
+                    ->all();
+
+                return [
+                    'student_id' => (int) $first->student_id,
+                    'student_name' => (string) ($first->student?->user?->name ?? 'Student'),
+                    'class_id' => (int) $first->class_id,
+                    'class_name' => (string) ($first->class?->name ?? 'Class'),
+                    'subject_id' => $first->subject_id ? (int) $first->subject_id : null,
+                    'subject_name' => (string) ($first->subject?->name ?? 'General Attendance'),
+                    'time_start' => (string) $first->time_start,
+                    'time_end' => (string) ($first->time_end ?? ''),
+                    'time_slot' => trim(((string) $first->time_start).' - '.((string) ($first->time_end ?? '-'))),
+                    'present_count' => $presentCount,
+                    'absent_count' => $absentCount,
+                    'leave_count' => $leaveCount,
+                    'total_missed' => $absentCount + $leaveCount,
+                    'reasons' => $sortedEntries
+                        ->pluck('remarks')
+                        ->filter(fn ($value): bool => trim((string) $value) !== '')
+                        ->unique()
+                        ->values()
+                        ->all(),
+                    'affected_dates' => $affectedDates,
+                ];
+            })
+            ->sortByDesc(fn (array $row): int => ((int) $row['total_missed'] * 1000) + (int) $row['absent_count'])
+            ->values();
+
+        $studentTotals = $absenceEntries
+            ->groupBy(fn (Attendance $attendance): int => (int) $attendance->student_id)
+            ->map(function ($entries) {
+                $sortedEntries = $entries->sortBy('date')->values();
+                /** @var Attendance $first */
+                $first = $sortedEntries->first();
+
+                return [
+                    'student_id' => (int) $first->student_id,
+                    'student_name' => (string) ($first->student?->user?->name ?? 'Student'),
+                    'class_id' => (int) $first->class_id,
+                    'class_name' => (string) ($first->class?->name ?? 'Class'),
+                    'absent_count' => $sortedEntries->where('status', 'A')->count(),
+                    'leave_count' => $sortedEntries->where('status', 'L')->count(),
+                    'total_missed' => $sortedEntries->count(),
+                    'subject_names' => $sortedEntries
+                        ->map(fn (Attendance $attendance): string => (string) ($attendance->subject?->name ?? 'General Attendance'))
+                        ->unique()
+                        ->values()
+                        ->all(),
+                ];
+            })
+            ->sortByDesc(fn (array $row): int => ((int) $row['total_missed'] * 1000) + (int) $row['absent_count'])
+            ->values();
+
+        $classRows = collect();
+        if (in_array($request->user()->role, ['super-admin', 'admin'], true)) {
+            $classRows = $rows
+                ->groupBy(fn (Attendance $attendance): int => (int) $attendance->class_id)
+                ->map(function ($entries) {
+                    $sortedEntries = $entries->sortBy('date')->values();
+                    /** @var Attendance $first */
+                    $first = $sortedEntries->first();
+
+                    return [
+                        'class_id' => (int) $first->class_id,
+                        'class_name' => (string) ($first->class?->name ?? 'Class'),
+                        'students_count' => $sortedEntries->pluck('student_id')->unique()->count(),
+                        'subjects_count' => $sortedEntries->pluck('subject_id')->filter()->unique()->count(),
+                        'present_count' => $sortedEntries->where('status', 'P')->count(),
+                        'absent_count' => $sortedEntries->where('status', 'A')->count(),
+                        'leave_count' => $sortedEntries->where('status', 'L')->count(),
+                        'total_records' => $sortedEntries->count(),
+                    ];
+                })
+                ->sortByDesc(fn (array $row): int => ((int) $row['absent_count'] * 1000) + (int) $row['leave_count'])
+                ->values();
+        }
+
+        return response()->json([
+            'data' => [
+                'month' => $reportMonth,
+                'date_from' => $dateRange['date_from'],
+                'date_to' => $dateRange['date_to'],
+                'period_mode' => $dateRange['period_type'],
+                'summary' => [
+                    'total_records' => $rows->count(),
+                    'students_count' => $rows->pluck('student_id')->unique()->count(),
+                    'subjects_count' => $rows->pluck('subject_id')->filter()->unique()->count(),
+                    'present_count' => $rows->where('status', 'P')->count(),
+                    'absent_count' => $rows->where('status', 'A')->count(),
+                    'leave_count' => $rows->where('status', 'L')->count(),
+                    'total_missed_records' => $absenceEntries->count(),
+                    'affected_students_count' => $absenceEntries->pluck('student_id')->unique()->count(),
+                ],
+                'absence_rows' => $absenceRows,
+                'subject_rows' => $subjectRows,
+                'student_totals' => $studentTotals,
+                'class_rows' => $classRows,
+            ],
         ]);
     }
 
@@ -84,6 +264,12 @@ class AttendanceController extends Controller
         }
 
         $this->ensureStudentBelongsToClass((int) $payload['student_id'], (int) $payload['class_id']);
+        $this->ensureSubjectBelongsToClass((int) $payload['class_id'], isset($payload['subject_id']) ? (int) $payload['subject_id'] : null);
+
+        if (! $this->canManageSubject($user, (int) $payload['class_id'], isset($payload['subject_id']) ? (int) $payload['subject_id'] : null)) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
         $payload = $this->normalizeAttendancePayload($payload);
         $this->validateTimeRange((string) $payload['time_start'], $payload['time_end'] ?? null);
 
@@ -101,6 +287,90 @@ class AttendanceController extends Controller
         ], 201);
     }
 
+    public function storeDailySheet(Request $request): JsonResponse
+    {
+        $this->authorize('create', Attendance::class);
+
+        $payload = $request->validate([
+            'class_id' => ['required', 'integer', 'exists:classes,id'],
+            'subject_id' => ['nullable', 'integer', 'exists:subjects,id'],
+            'date' => ['required', 'date'],
+            'time_start' => ['required', 'date_format:H:i'],
+            'time_end' => ['nullable', 'date_format:H:i', 'after:time_start'],
+            'records' => ['required', 'array', 'min:1'],
+            'records.*.student_id' => ['required', 'integer', 'exists:students,id'],
+            'records.*.status' => ['required', 'in:P,A,L'],
+            'records.*.remarks' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $user = $request->user();
+        $classId = (int) $payload['class_id'];
+
+        if (! $this->canManageClass($user, $classId)) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        $subjectId = isset($payload['subject_id']) ? (int) $payload['subject_id'] : null;
+        $this->ensureSubjectBelongsToClass($classId, $subjectId);
+
+        if (! $this->canManageSubject($user, $classId, $subjectId)) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        $basePayload = $this->normalizeAttendancePayload([
+            'class_id' => $classId,
+            'subject_id' => $subjectId,
+            'date' => $payload['date'],
+            'time_start' => $payload['time_start'],
+            'time_end' => $payload['time_end'] ?? null,
+        ]);
+
+        $this->validateTimeRange((string) $basePayload['time_start'], $basePayload['time_end'] ?? null);
+
+        $created = 0;
+        $updated = 0;
+        $savedRecords = [];
+
+        foreach ($payload['records'] as $record) {
+            $studentId = (int) ($record['student_id'] ?? 0);
+            $this->ensureStudentBelongsToClass($studentId, $classId);
+
+            $attendance = Attendance::query()->updateOrCreate(
+                [
+                    'student_id' => $studentId,
+                    'class_id' => $classId,
+                    'date' => $basePayload['date'],
+                    'time_start' => $basePayload['time_start'],
+                    'subject_id' => $basePayload['subject_id'] ?? null,
+                ],
+                [
+                    'time_end' => $basePayload['time_end'] ?? null,
+                    'status' => (string) $record['status'],
+                    'remarks' => isset($record['remarks']) && trim((string) $record['remarks']) !== ''
+                        ? trim((string) $record['remarks'])
+                        : null,
+                ]
+            );
+
+            if ($attendance->wasRecentlyCreated) {
+                $created++;
+            } else {
+                $updated++;
+            }
+
+            $savedRecords[] = $attendance->fresh()->load(['student.user', 'class', 'subject']);
+        }
+
+        return response()->json([
+            'message' => 'Daily attendance sheet saved successfully.',
+            'data' => [
+                'created' => $created,
+                'updated' => $updated,
+                'records' => $savedRecords,
+            ],
+        ], 201);
+    }
+
     public function update(AttendanceUpdateRequest $request, Attendance $attendance): JsonResponse
     {
         $this->authorize('update', $attendance);
@@ -110,15 +380,23 @@ class AttendanceController extends Controller
 
         $targetClassId = (int) ($payload['class_id'] ?? $attendance->class_id);
         $targetStudentId = (int) ($payload['student_id'] ?? $attendance->student_id);
+        $targetSubjectId = array_key_exists('subject_id', $payload)
+            ? (isset($payload['subject_id']) ? (int) $payload['subject_id'] : null)
+            : ($attendance->subject_id ? (int) $attendance->subject_id : null);
 
         if (! $this->canManageClass($user, $targetClassId)) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
         $this->ensureStudentBelongsToClass($targetStudentId, $targetClassId);
+        $this->ensureSubjectBelongsToClass($targetClassId, $targetSubjectId);
+
+        if (! $this->canManageSubject($user, $targetClassId, $targetSubjectId)) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
 
         $payload = $this->normalizeAttendancePayload($payload);
-        $merged = array_merge($attendance->only(['student_id', 'class_id', 'date', 'time_start']), $payload);
+        $merged = array_merge($attendance->only(['student_id', 'class_id', 'subject_id', 'date', 'time_start']), $payload);
         $this->validateTimeRange((string) $merged['time_start'], $merged['time_end'] ?? null);
 
         if ($this->hasDuplicateRecord($merged, $attendance->id)) {
@@ -131,7 +409,7 @@ class AttendanceController extends Controller
 
         return response()->json([
             'message' => 'Attendance updated.',
-            'data' => $attendance->fresh()->load(['student.user', 'class']),
+            'data' => $attendance->fresh()->load(['student.user', 'class', 'subject']),
         ]);
     }
 
@@ -157,37 +435,23 @@ class AttendanceController extends Controller
         $filters = $request->validate([
             'class_id' => ['nullable', 'integer', 'exists:classes,id'],
             'student_id' => ['nullable', 'integer', 'exists:students,id'],
+            'subject_id' => ['nullable', 'integer', 'exists:subjects,id'],
             'status' => ['nullable', 'in:P,A,L'],
+            'period_type' => ['nullable', 'in:month,semester,year,range'],
+            'month' => ['nullable', 'date_format:Y-m'],
+            'year' => ['nullable', 'integer', 'digits:4', 'min:2000', 'max:2100'],
+            'semester' => ['nullable', 'integer', 'in:1,2'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
         ]);
 
         $query = Attendance::query()
-            ->with(['student.user', 'class'])
+            ->with(['student.user', 'class', 'subject'])
             ->orderByDesc('date')
             ->orderByDesc('time_start');
 
         $this->applyVisibilityScope($query, $request->user());
-
-        if (isset($filters['class_id'])) {
-            $query->where('class_id', $filters['class_id']);
-        }
-
-        if (isset($filters['student_id'])) {
-            $query->where('student_id', $filters['student_id']);
-        }
-
-        if (isset($filters['status'])) {
-            $query->where('status', $filters['status']);
-        }
-
-        if (isset($filters['date_from'])) {
-            $query->whereDate('date', '>=', $filters['date_from']);
-        }
-
-        if (isset($filters['date_to'])) {
-            $query->whereDate('date', '<=', $filters['date_to']);
-        }
+        $this->applyAttendanceFilters($query, $filters);
 
         $rows = $query->get();
         $fileName = 'attendance_export_'.now()->format('Ymd_His').'.csv';
@@ -208,6 +472,9 @@ class AttendanceController extends Controller
                 'student_name',
                 'class_id',
                 'class_name',
+                'subject_id',
+                'subject_name',
+                'remarks',
             ]);
 
             foreach ($rows as $item) {
@@ -221,6 +488,9 @@ class AttendanceController extends Controller
                     $item->student?->user?->name,
                     $item->class_id,
                     $item->class?->name,
+                    $item->subject_id,
+                    $item->subject?->name,
+                    $item->remarks,
                 ]);
             }
 
@@ -237,37 +507,23 @@ class AttendanceController extends Controller
         $filters = $request->validate([
             'class_id' => ['nullable', 'integer', 'exists:classes,id'],
             'student_id' => ['nullable', 'integer', 'exists:students,id'],
+            'subject_id' => ['nullable', 'integer', 'exists:subjects,id'],
             'status' => ['nullable', 'in:P,A,L'],
+            'period_type' => ['nullable', 'in:month,semester,year,range'],
+            'month' => ['nullable', 'date_format:Y-m'],
+            'year' => ['nullable', 'integer', 'digits:4', 'min:2000', 'max:2100'],
+            'semester' => ['nullable', 'integer', 'in:1,2'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
         ]);
 
         $query = Attendance::query()
-            ->with(['student.user', 'class'])
+            ->with(['student.user', 'class', 'subject'])
             ->orderByDesc('date')
             ->orderByDesc('time_start');
 
         $this->applyVisibilityScope($query, $request->user());
-
-        if (isset($filters['class_id'])) {
-            $query->where('class_id', $filters['class_id']);
-        }
-
-        if (isset($filters['student_id'])) {
-            $query->where('student_id', $filters['student_id']);
-        }
-
-        if (isset($filters['status'])) {
-            $query->where('status', $filters['status']);
-        }
-
-        if (isset($filters['date_from'])) {
-            $query->whereDate('date', '>=', $filters['date_from']);
-        }
-
-        if (isset($filters['date_to'])) {
-            $query->whereDate('date', '<=', $filters['date_to']);
-        }
+        $this->applyAttendanceFilters($query, $filters);
 
         $rows = $query->get();
         $fileName = 'attendance_export_'.now()->format('Ymd_His').'.pdf';
@@ -310,10 +566,12 @@ class AttendanceController extends Controller
                 $record = [
                     'student_id' => (int) ($row['student_id'] ?? 0),
                     'class_id' => (int) ($row['class_id'] ?? 0),
+                    'subject_id' => isset($row['subject_id']) && $row['subject_id'] !== '' ? (int) $row['subject_id'] : null,
                     'date' => (string) ($row['date'] ?? ''),
                     'time_start' => (string) ($row['time_start'] ?? ''),
                     'time_end' => isset($row['time_end']) && $row['time_end'] !== '' ? (string) $row['time_end'] : null,
                     'status' => (string) ($row['status'] ?? ''),
+                    'remarks' => isset($row['remarks']) && $row['remarks'] !== '' ? (string) $row['remarks'] : null,
                 ];
 
                 if (
@@ -334,6 +592,14 @@ class AttendanceController extends Controller
                     ]);
                 }
 
+                $this->ensureSubjectBelongsToClass((int) $record['class_id'], isset($record['subject_id']) ? (int) $record['subject_id'] : null);
+
+                if (! $this->canManageSubject($request->user(), (int) $record['class_id'], isset($record['subject_id']) ? (int) $record['subject_id'] : null)) {
+                    throw ValidationException::withMessages([
+                        'subject_id' => ['You cannot import attendance for this class subject.'],
+                    ]);
+                }
+
                 $this->ensureStudentBelongsToClass((int) $record['student_id'], (int) $record['class_id']);
                 $this->validateTimeRange((string) $record['time_start'], $record['time_end']);
 
@@ -344,10 +610,12 @@ class AttendanceController extends Controller
                         'class_id' => $normalized['class_id'],
                         'date' => $normalized['date'],
                         'time_start' => $normalized['time_start'],
+                        'subject_id' => $normalized['subject_id'] ?? null,
                     ],
                     [
                         'time_end' => $normalized['time_end'] ?? null,
                         'status' => $normalized['status'],
+                        'remarks' => $normalized['remarks'] ?? null,
                     ]
                 );
 
@@ -404,8 +672,11 @@ class AttendanceController extends Controller
         }
 
         if ($user->role === 'teacher') {
-            $allowedClassIds = $user->teachingClasses()->pluck('classes.id')->all();
-            $query->whereIn('class_id', $allowedClassIds === [] ? [-1] : $allowedClassIds);
+            $classIds = $user->teachingClasses()->pluck('classes.id')->all();
+            $subjectIds = $user->teachingClasses()->pluck('teacher_class.subject_id')->filter()->all();
+
+            $query->whereIn('class_id', $classIds === [] ? [-1] : $classIds)
+                ->whereIn('subject_id', $subjectIds === [] ? [-1] : $subjectIds);
         }
     }
 
@@ -448,6 +719,30 @@ class AttendanceController extends Controller
         return true;
     }
 
+    private function canManageSubject(User $user, int $classId, ?int $subjectId): bool
+    {
+        if (! $this->canManageClass($user, $classId)) {
+            return false;
+        }
+
+        if (! $subjectId) {
+            return true;
+        }
+
+        if ($user->role === 'super-admin' || $user->role === 'admin') {
+            return true;
+        }
+
+        if ($user->role !== 'teacher') {
+            return false;
+        }
+
+        return $user->teachingClasses()
+            ->where('classes.id', $classId)
+            ->wherePivot('subject_id', $subjectId)
+            ->exists();
+    }
+
     private function ensureStudentBelongsToClass(int $studentId, int $classId): void
     {
         $matches = Student::query()
@@ -462,12 +757,49 @@ class AttendanceController extends Controller
         }
     }
 
+    private function ensureSubjectBelongsToClass(int $classId, ?int $subjectId): void
+    {
+        if (! $subjectId) {
+            return;
+        }
+
+        $class = SchoolClass::query()->find($classId);
+        $subject = Subject::query()->find($subjectId);
+
+        if (! $class || ! $subject) {
+            throw ValidationException::withMessages([
+                'subject_id' => ['Selected subject is invalid.'],
+            ]);
+        }
+
+        if ((int) $class->school_id !== (int) $subject->school_id) {
+            throw ValidationException::withMessages([
+                'subject_id' => ['Selected subject does not belong to the selected class school.'],
+            ]);
+        }
+
+        if (! $class->subjects()->whereKey($subjectId)->exists()) {
+            throw ValidationException::withMessages([
+                'subject_id' => ['Selected subject is not assigned to the selected class.'],
+            ]);
+        }
+    }
+
     /**
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
     private function normalizeAttendancePayload(array $payload): array
     {
+        if (array_key_exists('subject_id', $payload) && (int) ($payload['subject_id'] ?? 0) <= 0) {
+            $payload['subject_id'] = null;
+        }
+
+        if (array_key_exists('remarks', $payload)) {
+            $remarks = trim((string) ($payload['remarks'] ?? ''));
+            $payload['remarks'] = $remarks !== '' ? $remarks : null;
+        }
+
         if (array_key_exists('time_start', $payload) && $payload['time_start']) {
             $payload['time_start'] = $payload['time_start'].':00';
         }
@@ -490,11 +822,122 @@ class AttendanceController extends Controller
             ->whereDate('date', $payload['date'])
             ->where('time_start', $payload['time_start']);
 
+        if (array_key_exists('subject_id', $payload)) {
+            if ($payload['subject_id']) {
+                $query->where('subject_id', $payload['subject_id']);
+            } else {
+                $query->whereNull('subject_id');
+            }
+        }
+
         if ($exceptId) {
             $query->whereKeyNot($exceptId);
         }
 
         return $query->exists();
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function applyAttendanceFilters(Builder $query, array $filters): void
+    {
+        if (isset($filters['class_id'])) {
+            $query->where('class_id', $filters['class_id']);
+        }
+
+        if (isset($filters['student_id'])) {
+            $query->where('student_id', $filters['student_id']);
+        }
+
+        if (isset($filters['subject_id'])) {
+            $query->where('subject_id', $filters['subject_id']);
+        }
+
+        if (isset($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+
+        $dateRange = $this->resolveDateRange($filters);
+
+        if ($dateRange['date_from']) {
+            $query->whereDate('date', '>=', $dateRange['date_from']);
+        }
+
+        if ($dateRange['date_to']) {
+            $query->whereDate('date', '<=', $dateRange['date_to']);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return array{date_from:?string,date_to:?string,period_type:string}
+     */
+    private function resolveDateRange(array $filters): array
+    {
+        $periodType = trim((string) ($filters['period_type'] ?? ''));
+        $month = trim((string) ($filters['month'] ?? ''));
+
+        if ($periodType === '' && $month !== '') {
+            $periodType = 'month';
+        }
+
+        if ($periodType === '' && ! empty($filters['date_from']) && ! empty($filters['date_to'])) {
+            $periodType = 'range';
+        }
+
+        if ($periodType === '' && ! empty($filters['year']) && ! empty($filters['semester'])) {
+            $periodType = 'semester';
+        }
+
+        if ($periodType === '' && ! empty($filters['year'])) {
+            $periodType = 'year';
+        }
+
+        if ($periodType === 'semester') {
+            $year = (int) ($filters['year'] ?? 0);
+            $semester = (int) ($filters['semester'] ?? 0);
+            if ($year > 0 && in_array($semester, [1, 2], true)) {
+                $startMonth = $semester === 1 ? 1 : 7;
+                $start = Carbon::create($year, $startMonth, 1)->startOfMonth();
+                $end = $start->copy()->addMonths(5)->endOfMonth();
+
+                return [
+                    'date_from' => $start->toDateString(),
+                    'date_to' => $end->toDateString(),
+                    'period_type' => 'semester',
+                ];
+            }
+        }
+
+        if ($periodType === 'year') {
+            $year = (int) ($filters['year'] ?? 0);
+            if ($year > 0) {
+                $start = Carbon::create($year, 1, 1)->startOfYear();
+
+                return [
+                    'date_from' => $start->toDateString(),
+                    'date_to' => $start->copy()->endOfYear()->toDateString(),
+                    'period_type' => 'year',
+                ];
+            }
+        }
+
+        if (($periodType === '' || $periodType === 'month') && $month !== '') {
+            $monthDate = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+
+            return [
+                'date_from' => $monthDate->toDateString(),
+                'date_to' => $monthDate->copy()->endOfMonth()->toDateString(),
+                'period_type' => 'month',
+            ];
+        }
+
+        return [
+            'date_from' => isset($filters['date_from']) ? (string) $filters['date_from'] : null,
+            'date_to' => isset($filters['date_to']) ? (string) $filters['date_to'] : null,
+            'period_type' => 'range',
+        ];
     }
 
     private function validateTimeRange(string $timeStart, ?string $timeEnd): void

@@ -2,7 +2,7 @@
 
 @section('content')
     <h1 class="title">{{ $mode === 'create' ? 'Create Student' : 'Edit Student' }}</h1>
-    <p class="subtitle">Data will be submitted to real API endpoint.</p>
+    <p class="subtitle">Fill in the form below to save student information.</p>
 
     <div class="nav">
         <a href="{{ route('panel.students.index') }}">Back to list</a>
@@ -79,9 +79,7 @@
 
             <label>Email</label>
             <input type="email" name="email" value="{{ old('email', data_get($item, 'user.email', '')) }}" required>
-
-            <label>Password</label>
-            <input type="password" name="password" required>
+            <p class="text-muted">A login link will be sent to this email.</p>
 
             <label>Address</label>
             <input type="text" name="address" value="{{ old('address', data_get($item, 'user.address', '')) }}">
@@ -178,9 +176,7 @@
 
             <label>Email</label>
             <input type="email" name="email" value="{{ old('email', $item['user']['email'] ?? '') }}" required>
-
-            <label>Password {{ $mode === 'edit' ? '(optional)' : '' }}</label>
-            <input type="password" name="password" {{ $mode === 'create' ? 'required' : '' }}>
+            <p class="text-muted">A login link will be sent to this email.</p>
 
             <label>Grade</label>
             <input type="text" name="grade" value="{{ old('grade', $item['grade'] ?? '') }}">

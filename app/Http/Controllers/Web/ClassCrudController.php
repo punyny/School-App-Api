@@ -330,10 +330,6 @@ class ClassCrudController extends Controller
      */
     private function fetchTeacherOptions(Request $request, InternalApiClient $api, ?int $schoolId): array
     {
-        if ($request->user()->role === 'super-admin' && ! $schoolId) {
-            return [];
-        }
-
         $filters = [
             'role' => 'teacher',
             'per_page' => 100,
@@ -371,10 +367,6 @@ class ClassCrudController extends Controller
      */
     private function fetchSubjectOptions(Request $request, InternalApiClient $api, ?int $schoolId): array
     {
-        if ($request->user()->role === 'super-admin' && ! $schoolId) {
-            return [];
-        }
-
         $filters = ['per_page' => 100];
         if ($request->user()->role === 'super-admin' && $schoolId) {
             $filters['school_id'] = $schoolId;
@@ -406,10 +398,6 @@ class ClassCrudController extends Controller
      */
     private function fetchStudentsForSchoolScope(Request $request, InternalApiClient $api, ?int $schoolId): array
     {
-        if ($request->user()->role === 'super-admin' && ! $schoolId) {
-            return [];
-        }
-
         $filters = ['per_page' => 100];
         if ($request->user()->role === 'super-admin' && $schoolId) {
             $filters['school_id'] = $schoolId;

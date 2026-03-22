@@ -2,7 +2,7 @@
 
 @section('content')
     <h1 class="title">{{ $mode === 'create' ? 'Create Notification' : 'Edit Notification' }}</h1>
-    <p class="subtitle">Data will be submitted to real API endpoint.</p>
+    <p class="subtitle">Create or update notification details below.</p>
 
     <div class="nav">
         <a href="{{ route('panel.notifications.index') }}">Back to list</a>

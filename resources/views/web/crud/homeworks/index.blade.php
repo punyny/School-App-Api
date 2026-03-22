@@ -1,8 +1,8 @@
 @extends('web.layouts.app')
 
 @section('content')
-    <h1 class="title">Homework Management (API)</h1>
-    <p class="subtitle">Only teacher can create or update homework for assigned class and subject.</p>
+    <h1 class="title">Homework Management</h1>
+    <p class="subtitle">Manage homework by class, subject, and teacher assignment.</p>
 
     <div class="nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>

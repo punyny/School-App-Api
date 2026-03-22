@@ -1,8 +1,8 @@
 @extends('web.layouts.app')
 
 @section('content')
-    <h1 class="title">School Management (API)</h1>
-    <p class="subtitle">Super-admin can create/update/delete schools and top-level configuration.</p>
+    <h1 class="title">School Management</h1>
+    <p class="subtitle">Manage schools and top-level school configuration.</p>
 
     <div class="nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>

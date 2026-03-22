@@ -21,6 +21,14 @@ class AttendancePolicy
             return true;
         }
 
+        if ($user->role === 'teacher') {
+            return (int) ($attendance->subject_id ?? 0) > 0
+                && $user->teachingClasses()
+                    ->where('classes.id', (int) $attendance->class_id)
+                    ->wherePivot('subject_id', (int) $attendance->subject_id)
+                    ->exists();
+        }
+
         if ($this->isStudentOwner($user, (int) $attendance->student_id)) {
             return true;
         }
@@ -39,7 +47,7 @@ class AttendancePolicy
 
     public function update(User $user, Attendance $attendance): bool
     {
-        return $this->create($user) && $this->managesClass($user, (int) $attendance->class_id);
+        return $this->create($user) && $this->view($user, $attendance);
     }
 
     public function delete(User $user, Attendance $attendance): bool

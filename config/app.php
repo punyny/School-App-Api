@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'Laravel'),
+    'name' => env('APP_NAME', 'Sala Digital'),
 
     /*
     |--------------------------------------------------------------------------
@@ -53,6 +53,8 @@ return [
     */
 
     'url' => env('APP_URL', 'http://localhost'),
+
+    'mobile_magic_link_base' => env('MOBILE_MAGIC_LINK_BASE', 'schoolmobile://login'),
 
     /*
     |--------------------------------------------------------------------------

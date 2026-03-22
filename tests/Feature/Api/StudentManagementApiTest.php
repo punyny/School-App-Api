@@ -114,7 +114,6 @@ class StudentManagementApiTest extends TestCase
         $response = $this->withToken($token)->postJson('/api/students', [
             'name' => 'Auto ID Student',
             'email' => 'auto.id.student@example.com',
-            'password' => 'password123',
             'grade' => '7',
         ]);
 
@@ -267,6 +266,31 @@ class StudentManagementApiTest extends TestCase
 
         $this->assertSame('A1', $class->name);
         $this->assertSame('Grade 7', $class->grade_level);
+    }
+
+    public function test_admin_can_import_student_csv_without_password_column(): void
+    {
+        $this->seed();
+
+        $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $token = $admin->createToken('phpunit')->plainTextToken;
+
+        $csv = implode("\n", [
+            'name,khmer_name,student_id,class,email,grade',
+            'CSV No Password Student,សិស្សគ្មានពាក្យសម្ងាត់,STU-NO-PASS-01,Grade 7 A,csv.no.password.student@example.com,7',
+        ]);
+
+        $response = $this->withToken($token)->withHeader('Accept', 'application/json')->post('/api/students/import/csv', [
+            'file' => UploadedFile::fake()->createWithContent('students-no-password.csv', $csv),
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.created', 1);
+
+        $student = Student::query()->where('student_code', 'STU-NO-PASS-01')->with('user')->firstOrFail();
+
+        $this->assertSame('csv.no.password.student@example.com', $student->user?->email);
+        $this->assertNotEmpty((string) $student->user?->password);
     }
 
     public function test_admin_can_create_guardian_role_using_guardian_alias(): void

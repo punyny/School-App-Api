@@ -2,7 +2,7 @@
 
 @section('content')
     <h1 class="title">{{ $mode === 'create' ? 'Create Subject' : 'Edit Subject' }}</h1>
-    <p class="subtitle">Data will be submitted to real API endpoint.</p>
+    <p class="subtitle">Fill in the form below to save subject information.</p>
 
     <div class="nav">
         <a href="{{ route('panel.subjects.index') }}">Back to list</a>

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\ProfileImageStorage;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -10,15 +11,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Auth\MustVerifyEmail as MustVerifyEmailTrait;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmail
 {
-    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
+    use HasApiTokens, HasFactory, MustVerifyEmailTrait, Notifiable, SoftDeletes;
 
     protected $fillable = [
         'username',
@@ -30,6 +32,7 @@ class User extends Authenticatable
         'khmer_name',
         'name',
         'email',
+        'email_verified_at',
         'phone',
         'gender',
         'dob',
@@ -93,6 +96,7 @@ class User extends Authenticatable
                     $suffix = $counter === 0 ? '' : '_'.$counter;
                     $username = mb_substr($candidate, 0, 50 - mb_strlen($suffix)).$suffix;
                     $exists = static::query()
+                        ->withTrashed()
                         ->where('username', $username)
                         ->when($user->exists, fn ($query) => $query->whereKeyNot($user->getKey()))
                         ->exists();

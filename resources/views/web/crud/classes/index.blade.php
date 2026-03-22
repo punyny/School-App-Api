@@ -33,8 +33,8 @@
         }
     </style>
 
-    <h1 class="title">Class Management (API)</h1>
-    <p class="subtitle">List shows class teachers, Monday-Saturday routine, and student names for quick admin setup.</p>
+    <h1 class="title">Class Management</h1>
+    <p class="subtitle">Manage classes, class teachers, schedules, and student assignments in one place.</p>
 
     <div class="nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>

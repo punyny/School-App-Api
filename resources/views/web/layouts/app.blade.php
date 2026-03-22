@@ -3,7 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ $title ?? config('app.name') }}</title>
+    @php
+        $pageTitle = trim((string) ($title ?? ''));
+        $appName = trim((string) config('app.name', 'Sala Digital'));
+        $browserTitle = $pageTitle !== ''
+            ? $pageTitle.' | '.$appName
+            : $appName;
+    @endphp
+    <title>{{ $browserTitle }}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ asset('sala-digital-mark.svg') }}">
+    <link rel="shortcut icon" href="{{ asset('sala-digital-mark.svg') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Kantumruy+Pro:wght@400;500;600;700&family=Noto+Sans+Khmer:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -40,6 +49,10 @@
                 radial-gradient(900px 420px at -12% -18%, #dbeafe 0%, transparent 72%),
                 radial-gradient(980px 460px at 112% 115%, #fde68a 0%, transparent 70%),
                 linear-gradient(145deg, var(--bg-page-1) 0%, #fff1df 35%, var(--bg-page-2) 100%);
+        }
+
+        body.sidebar-mobile-lock {
+            overflow: hidden;
         }
 
         body.locale-km {
@@ -107,6 +120,10 @@
             transition: padding .22s ease;
         }
 
+        .sidebar-backdrop {
+            display: none;
+        }
+
         .sidebar-brand {
             display: flex;
             align-items: center;
@@ -124,11 +141,16 @@
             border-radius: 12px;
             display: grid;
             place-items: center;
-            color: #fff;
-            font-size: 12px;
-            font-weight: 800;
             background: linear-gradient(135deg, var(--primary), var(--primary-2));
             box-shadow: 0 8px 22px rgba(12, 80, 72, 0.32);
+            overflow: hidden;
+            padding: 7px;
+        }
+
+        .brand-mark img {
+            width: 100%;
+            height: 100%;
+            display: block;
         }
 
         .brand-name {
@@ -867,6 +889,28 @@
             box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.14);
         }
 
+        input[type="checkbox"],
+        input[type="radio"] {
+            width: 16px;
+            height: 16px;
+            padding: 0;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            box-shadow: none;
+            accent-color: var(--accent-blue);
+            flex: 0 0 auto;
+            vertical-align: middle;
+        }
+
+        input[type="checkbox"]:focus,
+        input[type="radio"]:focus {
+            outline: 2px solid rgba(43, 108, 176, 0.22);
+            outline-offset: 2px;
+            border-color: transparent;
+            box-shadow: none;
+        }
+
         textarea {
             min-height: 90px;
             resize: vertical;
@@ -882,6 +926,13 @@
             font-weight: 700;
             cursor: pointer;
             transition: .18s ease;
+        }
+
+        button,
+        .nav a,
+        .head-link,
+        .sidebar-links a {
+            min-height: 44px;
         }
 
         button:hover {
@@ -1612,13 +1663,40 @@
             }
 
             .global-sidebar {
-                border-right: none;
-                border-bottom: 1px solid var(--line);
-                max-height: 320px;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: min(86vw, 340px);
+                height: 100dvh;
+                border-right: 1px solid var(--line);
+                border-bottom: none;
+                max-height: none;
+                z-index: 60;
+                transform: translateX(-104%);
+                transition: transform .24s ease, padding .22s ease;
+                box-shadow: 0 24px 44px rgba(13, 41, 37, 0.18);
             }
 
-            .sidebar-toggle {
-                display: none;
+            .app-frame.sidebar-mobile-open .global-sidebar {
+                transform: translateX(0);
+            }
+
+            .sidebar-backdrop {
+                display: block;
+                position: fixed;
+                inset: 0;
+                border: 0;
+                padding: 0;
+                background: rgba(16, 26, 24, 0.38);
+                opacity: 0;
+                pointer-events: none;
+                z-index: 55;
+                transition: opacity .2s ease;
+            }
+
+            .app-frame.sidebar-mobile-open .sidebar-backdrop {
+                opacity: 1;
+                pointer-events: auto;
             }
 
             .dashboard-grid,
@@ -1630,7 +1708,7 @@
 
         @media (max-width: 760px) {
             .shell {
-                padding: 12px;
+                padding: 10px;
             }
 
             .workspace-main {
@@ -1640,22 +1718,39 @@
             .global-head {
                 flex-direction: column;
                 align-items: stretch;
+                padding: 12px;
             }
 
             .head-left {
                 width: 100%;
+                flex-wrap: wrap;
             }
 
             .global-search {
                 max-width: none;
+                min-width: 100%;
             }
 
             .head-tools {
-                justify-content: flex-start;
+                justify-content: stretch;
+                display: grid;
+                grid-template-columns: 1fr;
             }
 
             .user-chip {
                 max-width: none;
+                width: 100%;
+            }
+
+            .role-pill,
+            .head-link,
+            .locale-inline-form,
+            .logout {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .locale-inline-form select {
                 width: 100%;
             }
 
@@ -1679,6 +1774,22 @@
 
             .cards {
                 grid-template-columns: 1fr;
+            }
+
+            .form-grid,
+            .form-grid-wide,
+            .module-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .upload-head,
+            .school-standard-strip {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .mini-actions {
+                justify-content: stretch;
             }
 
             .card {
@@ -1721,7 +1832,40 @@
             }
 
             table {
-                min-width: 620px;
+                min-width: 560px;
+                font-size: 13px;
+            }
+
+            th,
+            td {
+                padding: 10px 10px;
+            }
+
+            .panel-head {
+                padding: 12px 14px;
+            }
+
+            .title {
+                font-size: clamp(22px, 7vw, 30px);
+            }
+
+            .subtitle {
+                font-size: 14px;
+            }
+
+            .nav {
+                display: grid;
+                grid-template-columns: 1fr;
+            }
+
+            .nav a,
+            button {
+                width: 100%;
+            }
+
+            form.inline-form {
+                display: flex;
+                margin: 8px 0 0;
             }
         }
 
@@ -1783,9 +1927,11 @@
                 <div class="workspace-shell">
                     <aside class="global-sidebar" id="sidebar-nav">
                         <a class="sidebar-brand" href="{{ route('dashboard') }}">
-                            <span class="brand-mark">SM</span>
+                            <span class="brand-mark">
+                                <img src="{{ asset('sala-digital-mark.svg') }}" alt="Sala Digital">
+                            </span>
                             <span>
-                                <p class="brand-name">SM Info.</p>
+                                <p class="brand-name">Sala Digital</p>
                                 <p class="brand-sub">{{ __('ui.layout.brand_sub') }}</p>
                             </span>
                         </a>
@@ -1930,6 +2076,7 @@
                             <a data-nav-item data-nav-icon="user-circle" href="{{ route('profile.show') }}" class="{{ request()->routeIs('profile.*') ? 'active' : '' }}">{{ __('ui.layout.my_profile') }}</a>
                         </div>
                     </aside>
+                    <button type="button" class="sidebar-backdrop" id="sidebar-backdrop" aria-label="Close menu"></button>
 
                     <main class="workspace-main">
                         <header class="global-head">
@@ -2227,7 +2374,9 @@
 
             var appFrame = document.getElementById('app-frame');
             var sidebarToggle = document.getElementById('sidebar-toggle');
+            var sidebarBackdrop = document.getElementById('sidebar-backdrop');
             var sidebarStorageKey = 'school_ui_sidebar_collapsed_v1';
+            var mobileBreakpoint = 1180;
 
             var setCollapsedState = function (collapsed) {
                 if (!appFrame) {
@@ -2247,7 +2396,23 @@
                 }
             };
 
-            if (sidebarToggle && appFrame && window.innerWidth > 1180) {
+            var setMobileSidebarState = function (open) {
+                if (!appFrame) {
+                    return;
+                }
+
+                appFrame.classList.toggle('sidebar-mobile-open', open);
+                document.body.classList.toggle('sidebar-mobile-lock', open);
+                if (sidebarToggle) {
+                    sidebarToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+                }
+            };
+
+            var closeMobileSidebar = function () {
+                setMobileSidebarState(false);
+            };
+
+            if (sidebarToggle && appFrame && window.innerWidth > mobileBreakpoint) {
                 var storedCollapsed = false;
                 try {
                     storedCollapsed = window.localStorage.getItem(sidebarStorageKey) === '1';
@@ -2267,7 +2432,32 @@
                 });
             } else {
                 setCollapsedState(false);
+                if (sidebarToggle && appFrame) {
+                    sidebarToggle.addEventListener('click', function () {
+                        setMobileSidebarState(!appFrame.classList.contains('sidebar-mobile-open'));
+                    });
+                }
             }
+
+            if (sidebarBackdrop) {
+                sidebarBackdrop.addEventListener('click', closeMobileSidebar);
+            }
+
+            if (navItems.length > 0) {
+                navItems.forEach(function (item) {
+                    item.addEventListener('click', function () {
+                        if (window.innerWidth <= mobileBreakpoint) {
+                            closeMobileSidebar();
+                        }
+                    });
+                });
+            }
+
+            window.addEventListener('resize', function () {
+                if (window.innerWidth > mobileBreakpoint) {
+                    closeMobileSidebar();
+                }
+            });
 
             if (navSearchInput && sidebar && navItems.length > 0) {
                 navSearchInput.addEventListener('input', function () {

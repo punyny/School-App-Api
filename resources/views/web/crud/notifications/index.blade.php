@@ -1,8 +1,8 @@
 @extends('web.layouts.app')
 
 @section('content')
-    <h1 class="title">Notification Management (API)</h1>
-    <p class="subtitle">Manage user notifications and read status.</p>
+    <h1 class="title">Notification Management</h1>
+    <p class="subtitle">Manage notifications, delivery targets, and read status.</p>
 
     <div class="nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>

@@ -21,6 +21,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class StudentManagementController extends Controller
 {
+    private ?string $cachedGeneratedPasswordHash = null;
+
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Student::class);
@@ -30,14 +32,15 @@ class StudentManagementController extends Controller
             'class_id' => ['nullable', 'integer', 'exists:classes,id'],
             'search' => ['nullable', 'string', 'max:255'],
             'active' => ['nullable', 'boolean'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'per_page' => ['nullable', 'string', 'max:20'],
             'sort_by' => ['nullable', 'in:id,class_id,grade,created_at,updated_at'],
             'sort_dir' => ['nullable', 'in:asc,desc'],
         ]);
 
         $query = $this->buildStudentIndexQuery($request->user(), $filters);
+        $perPage = $this->resolvePerPage($filters['per_page'] ?? null, $query);
 
-        return response()->json($query->paginate($filters['per_page'] ?? 20));
+        return response()->json($query->paginate($perPage));
     }
 
     public function store(Request $request): JsonResponse
@@ -60,7 +63,7 @@ class StudentManagementController extends Controller
                 'max:255',
                 Rule::unique('users', 'email')->where(fn ($query) => $query->where('school_id', $schoolId)),
             ],
-            'password' => ['required', 'string', 'max:255', PasswordRule::defaults()],
+            'password' => ['nullable', 'string', 'max:255', PasswordRule::defaults()],
             'phone' => ['nullable', 'string', 'max:20'],
             'gender' => ['nullable', 'in:male,female,other'],
             'dob' => ['nullable', 'date'],
@@ -118,7 +121,7 @@ class StudentManagementController extends Controller
         }
 
         $student = DB::transaction(function () use ($payload, $schoolId, $parentIds): Student {
-            $passwordHash = Hash::make($payload['password']);
+            $passwordHash = $this->resolvePasswordHash($payload['password'] ?? null);
 
             $user = User::query()->create([
                 'user_code' => $payload['student_id'] ?? null,
@@ -127,6 +130,7 @@ class StudentManagementController extends Controller
                 'last_name' => $payload['last_name'] ?? null,
                 'khmer_name' => $payload['khmer_name'] ?? null,
                 'email' => $payload['email'],
+                'email_verified_at' => null,
                 'role' => 'student',
                 'school_id' => $schoolId,
                 'phone' => $payload['phone'] ?? null,
@@ -280,12 +284,22 @@ class StudentManagementController extends Controller
             }
         }
 
-        DB::transaction(function () use ($student, $payload, $targetClassId, $parentIds): void {
+        $emailChanged = array_key_exists('email', $payload)
+            && trim((string) $payload['email']) !== ''
+            && ! hash_equals(
+                mb_strtolower((string) ($student->user?->email ?? '')),
+                mb_strtolower(trim((string) $payload['email']))
+            );
+
+        DB::transaction(function () use ($student, $payload, $targetClassId, $parentIds, $emailChanged): void {
             $userUpdates = [];
             foreach (['name', 'first_name', 'last_name', 'khmer_name', 'email', 'phone', 'gender', 'dob', 'address', 'bio', 'image_url'] as $field) {
                 if (array_key_exists($field, $payload)) {
                     $userUpdates[$field] = $payload[$field];
                 }
+            }
+            if ($emailChanged) {
+                $userUpdates['email_verified_at'] = null;
             }
             if (array_key_exists('student_id', $payload)) {
                 $userUpdates['user_code'] = $payload['student_id'];
@@ -466,6 +480,10 @@ class StudentManagementController extends Controller
     public function importCsv(Request $request): JsonResponse
     {
         $this->authorize('create', Student::class);
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(120);
+        }
+        @ini_set('max_execution_time', '120');
 
         $payload = $request->validate([
             'file' => ['required', 'file', 'mimes:csv,txt'],
@@ -517,11 +535,19 @@ class StudentManagementController extends Controller
                     ]);
                 }
 
-                $classId = $this->resolveClassIdFromImportRow($row, $rowSchoolId);
-                $studentCode = $this->csvValue($row, ['student_id', 'student id', 'id']);
-                $khmerName = $this->csvValue($row, ['khmer_name', 'khmer name', 'name_kh', 'kh_name']);
                 $firstName = $this->csvValue($row, ['first_name', 'first name', 'fist_name', 'fist name']);
                 $lastName = $this->csvValue($row, ['last_name', 'last name']);
+                $khmerName = $this->csvValue($row, ['khmer_name', 'khmer name', 'name_kh', 'kh_name']);
+                $phone = $this->csvValue($row, ['phone', 'phone_number', 'phone number']);
+                $email = $this->csvValue($row, ['email', 'e-mail']);
+                $studentCode = $this->csvValue($row, ['student_id', 'student id', 'id']);
+
+                if ($email === '') {
+                    throw ValidationException::withMessages([
+                        'email' => ['email is required.'],
+                    ]);
+                }
+
                 $name = $this->csvValue($row, ['name', 'full_name', 'full name']);
 
                 if ($name === '') {
@@ -542,16 +568,11 @@ class StudentManagementController extends Controller
                     $khmerName = $name;
                 }
 
-                $email = $this->csvValue($row, ['email', 'e-mail']);
-                if ($email === '') {
-                    $email = $this->generatePlaceholderEmail($studentCode, $rowSchoolId);
-                }
-
                 if ($studentCode === '') {
                     $studentCode = $this->generateStudentCode($email !== '' ? $email : $name);
                 }
 
-                $phone = $this->csvValue($row, ['phone', 'phone_number', 'phone number']);
+                $classId = $this->resolveClassIdFromImportRow($row, $rowSchoolId, false);
                 $gender = $this->normalizeGenderFromCsv($this->csvValue($row, ['gender', 'sex']));
                 $dob = $this->normalizeDobFromCsv($this->csvValue($row, ['dob', 'date_of_birth', 'date of birth', 'birth_date', 'birth date']));
                 $grade = $this->csvValue($row, ['grade', 'grade_level', 'grade level']);
@@ -560,10 +581,8 @@ class StudentManagementController extends Controller
                 $bio = $this->csvValue($row, ['bio']);
                 $imageUrl = $this->csvValue($row, ['image_url', 'image url', 'avatar']);
                 $password = $this->csvValue($row, ['password']);
-                if ($password === '') {
-                    $password = 'password123';
-                }
-                $passwordHash = Hash::make($password);
+                $hasPassword = $password !== '';
+                $passwordHash = $hasPassword ? Hash::make($password) : null;
 
                 DB::transaction(function () use (
                     $rowSchoolId,
@@ -582,6 +601,7 @@ class StudentManagementController extends Controller
                     $address,
                     $bio,
                     $imageUrl,
+                    $hasPassword,
                     $passwordHash,
                     &$created,
                     &$updated
@@ -623,6 +643,7 @@ class StudentManagementController extends Controller
                     $wasCreated = false;
                     if (! $user) {
                         $wasCreated = true;
+                        $storedPasswordHash = $passwordHash ?? $this->resolvePasswordHash(null);
                         $user = User::query()->create([
                             'role' => 'student',
                             'user_code' => $studentCode,
@@ -637,8 +658,8 @@ class StudentManagementController extends Controller
                             'address' => $address !== '' ? $address : null,
                             'bio' => $bio !== '' ? $bio : null,
                             'image_url' => $imageUrl !== '' ? $imageUrl : null,
-                            'password' => $passwordHash,
-                            'password_hash' => $passwordHash,
+                            'password' => $storedPasswordHash,
+                            'password_hash' => $storedPasswordHash,
                             'school_id' => $rowSchoolId,
                             'active' => true,
                         ]);
@@ -653,7 +674,7 @@ class StudentManagementController extends Controller
                             ]);
                         }
 
-                        $user->fill([
+                        $updates = [
                             'user_code' => $studentCode,
                             'first_name' => $firstName !== '' ? $firstName : $user->first_name,
                             'last_name' => $lastName !== '' ? $lastName : $user->last_name,
@@ -666,10 +687,15 @@ class StudentManagementController extends Controller
                             'address' => $address !== '' ? $address : $user->address,
                             'bio' => $bio !== '' ? $bio : $user->bio,
                             'image_url' => $imageUrl !== '' ? $imageUrl : $user->image_url,
-                            'password' => $passwordHash,
-                            'password_hash' => $passwordHash,
                             'school_id' => $rowSchoolId,
-                        ])->save();
+                        ];
+
+                        if ($hasPassword && $passwordHash !== null) {
+                            $updates['password'] = $passwordHash;
+                            $updates['password_hash'] = $passwordHash;
+                        }
+
+                        $user->fill($updates)->save();
                     }
 
                     $studentCodeConflict = Student::query()->withTrashed()
@@ -725,10 +751,14 @@ class StudentManagementController extends Controller
     /**
      * @param  array<string, mixed>  $row
      */
-    private function resolveClassIdFromImportRow(array $row, int $schoolId): int
+    private function resolveClassIdFromImportRow(array $row, int $schoolId, bool $required = true): ?int
     {
         $rawClass = $this->csvValue($row, ['class_id', 'class id', 'class_name', 'class name', 'class']);
         if ($rawClass === '') {
+            if (! $required) {
+                return null;
+            }
+
             throw ValidationException::withMessages([
                 'class' => ['class (or class_id) is required for student import row.'],
             ]);
@@ -1026,5 +1056,48 @@ class StudentManagementController extends Controller
         }
 
         return $query;
+    }
+
+    private function resolvePerPage(mixed $perPageInput, Builder $query): int
+    {
+        $raw = trim((string) ($perPageInput ?? ''));
+        if ($raw === '') {
+            return 20;
+        }
+
+        if (Str::lower($raw) === 'all') {
+            $total = (clone $query)->toBase()->getCountForPagination();
+
+            return max(1, min($total, 5000));
+        }
+
+        if (! ctype_digit($raw)) {
+            throw ValidationException::withMessages([
+                'per_page' => ['per_page must be a number or all.'],
+            ]);
+        }
+
+        $value = (int) $raw;
+        if ($value < 1 || $value > 5000) {
+            throw ValidationException::withMessages([
+                'per_page' => ['per_page must be between 1 and 5000, or all.'],
+            ]);
+        }
+
+        return $value;
+    }
+
+    private function resolvePasswordHash(mixed $password): string
+    {
+        $plain = trim((string) ($password ?? ''));
+        if ($plain === '') {
+            if ($this->cachedGeneratedPasswordHash === null) {
+                $this->cachedGeneratedPasswordHash = Hash::make(Str::random(40));
+            }
+
+            return $this->cachedGeneratedPasswordHash;
+        }
+
+        return Hash::make($plain);
     }
 }

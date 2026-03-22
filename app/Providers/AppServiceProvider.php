@@ -30,7 +30,9 @@ use App\Policies\StudentPolicy;
 use App\Policies\SubjectPolicy;
 use App\Policies\TimetablePolicy;
 use App\Policies\UserPolicy;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -48,6 +50,35 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $appUrl = trim((string) config('app.url'));
+        if ($appUrl !== '') {
+            URL::forceRootUrl($appUrl);
+
+            if (str_starts_with($appUrl, 'https://')) {
+                URL::forceScheme('https');
+            }
+        }
+
+        VerifyEmail::createUrlUsing(function (User $notifiable): string {
+            $rootUrl = rtrim((string) config('app.url'), '/');
+
+            $relativeUrl = URL::temporarySignedRoute(
+                'verification.verify',
+                now()->addMinutes((int) config('auth.verification.expire', 60)),
+                [
+                    'id' => $notifiable->getKey(),
+                    'hash' => sha1((string) $notifiable->getEmailForVerification()),
+                ],
+                false
+            );
+
+            if ($rootUrl === '') {
+                return url($relativeUrl);
+            }
+
+            return $rootUrl.$relativeUrl;
+        });
+
         $roleOf = static fn (User $user): string => $user->normalizedRole();
         $isRole = static fn (User $user, string $role): bool => $roleOf($user) === $role;
         $inRoles = static fn (User $user, array $roles): bool => in_array($roleOf($user), $roles, true);

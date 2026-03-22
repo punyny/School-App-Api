@@ -145,9 +145,7 @@
 
         <label>{{ __('ui.user_form.email') }}</label>
         <input type="email" name="email" value="{{ old('email', $item['email'] ?? '') }}" required>
-
-        <label>{{ $mode === 'edit' ? __('ui.user_form.password_optional') : __('ui.user_form.password') }}</label>
-        <input type="password" name="password" {{ $mode === 'create' ? 'required' : '' }}>
+        <p class="text-muted" style="margin:8px 0 12px;">A login link will be sent to this email.</p>
 
         <label>{{ __('ui.user_form.phone') }}</label>
         <input type="text" name="phone" id="phone-field" value="{{ old('phone', $item['phone'] ?? '') }}">

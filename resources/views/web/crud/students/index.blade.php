@@ -40,7 +40,7 @@
         <div class="panel-head">Import Students CSV</div>
         <div class="upload-shell">
             <div class="upload-head">
-                <p class="upload-note">Required columns: <strong>name</strong>, <strong>khmer_name</strong>, <strong>class</strong> (or <strong>class_id</strong>), <strong>student_id</strong>.</p>
+                <p class="upload-note">Use the new student CSV format. Required columns: <strong>first_name</strong>, <strong>last_name</strong>, <strong>khmer_name</strong>, <strong>phone</strong>, <strong>email</strong>. Class and student code can be added later.</p>
                 <span class="badge-soft">CSV</span>
             </div>
             <label class="upload-zone" data-upload-zone>
@@ -49,8 +49,8 @@
                 <span class="upload-meta" data-upload-meta>No file selected</span>
             </label>
             <div class="upload-hints">
-                <span>Use class: A1/A2/B1</span>
-                <span>Or class_id: 1/2/3</span>
+                <span>class / class_id optional</span>
+                <span>student_id optional</span>
                 <span>UTF-8</span>
                 <span><a href="{{ asset('templates/student_import_template.csv') }}" download>Download template</a></span>
             </div>
@@ -68,6 +68,12 @@
     @php
         $selectedClassId = (string) ($filters['class_id'] ?? '');
         $classSelectOptions = collect($classOptions ?? []);
+        $totalStudents = (int) ($meta['total'] ?? count($items ?? []));
+        $visibleStudents = count($items ?? []);
+        $perPageMode = (string) ($filters['per_page'] ?? '20');
+        $studentSummary = $perPageMode === 'all'
+            ? "Showing all {$visibleStudents} students"
+            : "Showing {$visibleStudents} of {$totalStudents} students";
 
         if ($selectedClassId !== '' && ! $classSelectOptions->contains(fn ($option) => (string) ($option['id'] ?? '') === $selectedClassId)) {
             $classSelectOptions = $classSelectOptions->prepend([
@@ -99,13 +105,26 @@
                 <option value="1" {{ ($filters['active'] ?? '') === '1' ? 'selected' : '' }}>Yes</option>
                 <option value="0" {{ ($filters['active'] ?? '') === '0' ? 'selected' : '' }}>No</option>
             </select>
-            <input type="number" name="per_page" placeholder="Per Page" value="{{ $filters['per_page'] ?? 20 }}">
+            @php
+                $perPageValue = (string) ($filters['per_page'] ?? '20');
+            @endphp
+            <select name="per_page">
+                <option value="20" {{ $perPageValue === '20' ? 'selected' : '' }}>មើលម្ដង 20</option>
+                <option value="all" {{ $perPageValue === 'all' ? 'selected' : '' }}>View All</option>
+            </select>
         </div>
-        <button type="submit" class="btn-space-top">Filter</button>
+        <div class="btn-space-top" style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+            <button type="submit">Filter</button>
+            <a href="{{ route('panel.students.index') }}">Clear</a>
+            @if($perPageMode !== 'all')
+                <a href="{{ route('panel.students.index', array_merge(request()->except('page'), ['per_page' => 'all'])) }}">View All Students</a>
+            @endif
+        </div>
     </form>
 
     <section class="panel">
         <div class="panel-head">Students</div>
+        <p class="text-muted" style="margin:10px 0 16px;">{{ $studentSummary }}</p>
         <table>
             <thead>
             <tr>

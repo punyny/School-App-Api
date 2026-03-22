@@ -1,8 +1,8 @@
 @extends('web.layouts.app')
 
 @section('content')
-    <h1 class="title">Subject Management (API)</h1>
-    <p class="subtitle">Create/update/delete subjects by school scope.</p>
+    <h1 class="title">Subject Management</h1>
+    <p class="subtitle">Create, update, and organize subjects by school.</p>
 
     <div class="nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>

@@ -2,11 +2,16 @@
 
 namespace Tests\Feature\Web;
 
+use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\User;
+use App\Notifications\MobileMagicLoginLinkNotification;
+use App\Notifications\WebMagicLoginLinkNotification;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -18,7 +23,9 @@ class WebRoleAccessTest extends TestCase
     {
         $response = $this->get('/login');
 
-        $response->assertOk()->assertSee('School Portal Login');
+        $response->assertOk()
+            ->assertSee('School Portal Login')
+            ->assertSee('teacher@example.com');
     }
 
     public function test_locale_switch_changes_login_page_to_khmer(): void
@@ -30,6 +37,98 @@ class WebRoleAccessTest extends TestCase
         $response = $this->withSession(['locale' => 'km'])->get('/login');
 
         $response->assertOk()->assertSee('ចូលប្រើ');
+    }
+
+    public function test_login_request_sends_magic_link_for_unverified_user(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $teacher->forceFill(['email_verified_at' => null])->save();
+
+        Notification::fake();
+
+        $response = $this->from('/login')->post('/login', [
+            'login' => 'teacher@example.com',
+        ]);
+
+        $response->assertRedirect('/login');
+        $response->assertSessionHas('status', 'If that account exists, we sent a sign-in link to its email address.');
+        $response->assertSessionHas('debug_magic_login_url');
+        $response->assertSessionHas('debug_magic_login_path');
+        $response->assertSessionHas('debug_magic_login_email', 'teacher@example.com');
+
+        Notification::assertSentTo($teacher, WebMagicLoginLinkNotification::class);
+    }
+
+    public function test_user_can_login_from_magic_link_and_get_verified(): void
+    {
+        Notification::fake();
+        $this->seed();
+        config(['app.url' => 'https://example.ngrok-free.dev']);
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $teacher->forceFill(['email_verified_at' => null])->save();
+
+        $this->from('/login')->post('/login', [
+            'login' => 'teacher@example.com',
+        ])->assertRedirect('/login');
+
+        $notification = null;
+        Notification::assertSentTo($teacher, WebMagicLoginLinkNotification::class, function (WebMagicLoginLinkNotification $sent) use (&$notification): bool {
+            $notification = $sent;
+
+            return true;
+        });
+
+        $this->assertInstanceOf(WebMagicLoginLinkNotification::class, $notification);
+
+        $relativeLoginUrl = parse_url($notification->loginUrl(), PHP_URL_PATH);
+        $relativeLoginQuery = parse_url($notification->loginUrl(), PHP_URL_QUERY);
+        $requestUrl = $relativeLoginUrl.(is_string($relativeLoginQuery) && $relativeLoginQuery !== '' ? '?'.$relativeLoginQuery : '');
+
+        $response = $this->get($requestUrl);
+
+        $response->assertOk()
+            ->assertSee('Continue sign in')
+            ->assertSee('teacher@example.com')
+            ->assertSee('action="/login/magic/', false)
+            ->assertDontSee('action="http://', false);
+
+        $consumeResponse = $this->post($requestUrl);
+
+        $consumeResponse->assertRedirect('/dashboard');
+        $this->assertAuthenticatedAs($teacher->fresh());
+        $this->assertNotNull($teacher->fresh()->email_verified_at);
+    }
+
+    public function test_mobile_magic_link_bridge_page_can_render(): void
+    {
+        Notification::fake();
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+
+        $this->postJson('/api/auth/magic-link/request', [
+            'email' => 'teacher@example.com',
+            'device_name' => 'pixel-9',
+        ])->assertOk();
+
+        $notification = null;
+        Notification::assertSentTo($teacher, MobileMagicLoginLinkNotification::class, function (MobileMagicLoginLinkNotification $sent) use (&$notification): bool {
+            $notification = $sent;
+
+            return true;
+        });
+
+        $this->assertInstanceOf(MobileMagicLoginLinkNotification::class, $notification);
+
+        $response = $this->get($notification->bridgeLoginUrl());
+
+        $response->assertOk()
+            ->assertSee('Open the app to finish sign-in')
+            ->assertSee('Open School App')
+            ->assertSee('Continue on Web Instead');
     }
 
     public function test_security_headers_are_attached_on_web_responses(): void
@@ -51,6 +150,25 @@ class WebRoleAccessTest extends TestCase
         $response = $this->get('/admin/dashboard');
 
         $response->assertOk()->assertSee('Admin Dashboard');
+    }
+
+    public function test_admin_can_resend_verification_email_for_unverified_user(): void
+    {
+        Notification::fake();
+        $this->seed();
+
+        $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $teacher->forceFill(['email_verified_at' => null])->save();
+
+        $this->actingAs($admin);
+
+        $response = $this->post('/panel/users/'.$teacher->id.'/resend-verification-email');
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success', 'Verification email sent successfully.');
+
+        Notification::assertSentTo($teacher, VerifyEmail::class);
     }
 
     public function test_teacher_is_forbidden_from_admin_dashboard(): void
@@ -237,6 +355,22 @@ class WebRoleAccessTest extends TestCase
             ->assertSee('ព័ត៌មានគ្រូ');
     }
 
+    public function test_admin_can_see_user_filters_and_bulk_delete_controls(): void
+    {
+        $this->seed();
+
+        $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $this->actingAs($admin);
+
+        $response = $this->get('/panel/users');
+
+        $response->assertOk()
+            ->assertSee('User ID')
+            ->assertSee('Search class...')
+            ->assertSee('Delete Selected')
+            ->assertSee('Select Visible');
+    }
+
     public function test_admin_can_create_student_with_profile_image_from_web(): void
     {
         $this->seed();
@@ -251,7 +385,6 @@ class WebRoleAccessTest extends TestCase
             'student_id' => 'WEB-STU-001',
             'khmer_name' => 'សិស្សរូបភាព',
             'email' => 'web-image-student@example.com',
-            'password' => 'password123',
             'grade' => '7',
             'image' => UploadedFile::fake()->image('student.png')->size(4096),
         ]);
@@ -386,6 +519,63 @@ class WebRoleAccessTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_bulk_delete_selected_users_from_web(): void
+    {
+        $this->seed();
+
+        $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $teacher = User::factory()->teacher((int) $admin->school_id)->create([
+            'name' => 'Bulk Delete Teacher',
+            'email' => 'bulk-delete-teacher@example.com',
+        ]);
+        $parent = User::factory()->parent((int) $admin->school_id)->create([
+            'name' => 'Bulk Delete Parent',
+            'email' => 'bulk-delete-parent@example.com',
+        ]);
+
+        $this->actingAs($admin);
+
+        $response = $this->post('/panel/users/bulk-delete', [
+            'user_ids' => [$teacher->id, $parent->id],
+        ]);
+
+        $response->assertRedirect('/panel/users');
+        $response->assertSessionHas('success', 'Deleted 2 user(s) successfully.');
+        $this->assertSoftDeleted('users', ['id' => $teacher->id]);
+        $this->assertSoftDeleted('users', ['id' => $parent->id]);
+    }
+
+    public function test_admin_create_with_deleted_email_restores_account_and_redirects_to_edit(): void
+    {
+        $this->seed();
+
+        $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $deletedTeacher = User::factory()->teacher((int) $admin->school_id)->create([
+            'name' => 'Deleted Teacher',
+            'email' => 'deleted.teacher.web@example.com',
+        ]);
+        $deletedTeacher->delete();
+
+        $this->actingAs($admin);
+
+        $response = $this->post('/panel/users', [
+            'role' => 'parent',
+            'name' => 'Restored As Parent',
+            'email' => 'deleted.teacher.web@example.com',
+            'phone' => '098877665',
+            'active' => '1',
+        ]);
+
+        $response->assertRedirect('/panel/users/'.$deletedTeacher->id.'/edit');
+        $response->assertSessionHas('success', 'Deleted account restored successfully. Please update the role and save.');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $deletedTeacher->id,
+            'email' => 'deleted.teacher.web@example.com',
+            'deleted_at' => null,
+        ]);
+    }
+
     public function test_admin_can_update_student_with_profile_image_from_web(): void
     {
         $this->seed();
@@ -468,11 +658,86 @@ class WebRoleAccessTest extends TestCase
         $this->seed();
 
         $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $assignment = DB::table('teacher_class')->where('teacher_id', $teacher->id)->first();
+        $this->assertNotNull($assignment);
         $this->actingAs($teacher);
 
-        $response = $this->get('/panel/attendance');
+        $response = $this->get('/panel/attendance?class_id='.(int) $assignment->class_id.'&subject_id='.(int) $assignment->subject_id.'&period_type=month&month='.now()->format('Y-m'));
 
-        $response->assertOk()->assertSee('Attendance Management');
+        $response->assertOk()
+            ->assertSee('ការគ្រប់គ្រងវត្តមាន')
+            ->assertSee('របាយការណ៍អវត្តមានតាមមុខវិជ្ជា')
+            ->assertSee('សរុបតាមសិស្ស')
+            ->assertDontSee('សរុបថ្នាក់ដែលបានជ្រើស');
+    }
+
+    public function test_admin_attendance_crud_page_shows_class_summary_report(): void
+    {
+        $this->seed();
+
+        $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $schoolClass = SchoolClass::query()->where('school_id', $admin->school_id)->firstOrFail();
+        $this->actingAs($admin);
+
+        $response = $this->get('/panel/attendance?class_id='.$schoolClass->id.'&period_type=month&month='.now()->format('Y-m'));
+
+        $response->assertOk()
+            ->assertSee('ការគ្រប់គ្រងវត្តមាន')
+            ->assertSee('របាយការណ៍អវត្តមានតាមមុខវិជ្ជា')
+            ->assertSee('សរុបតាមសិស្ស')
+            ->assertSee('សរុបថ្នាក់ដែលបានជ្រើស');
+    }
+
+    public function test_teacher_can_open_daily_attendance_tracker_and_save_sheet(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $assignment = DB::table('teacher_class')->where('teacher_id', $teacher->id)->first();
+        $this->assertNotNull($assignment);
+
+        $students = Student::query()
+            ->where('class_id', (int) $assignment->class_id)
+            ->orderBy('id')
+            ->take(1)
+            ->get();
+
+        $this->assertCount(1, $students);
+
+        $this->actingAs($teacher);
+
+        $createResponse = $this->get('/panel/attendance/create');
+
+        $createResponse->assertOk()
+            ->assertSee('ស្រង់វត្តមានប្រចាំថ្ងៃ')
+            ->assertSee('ជ្រើសមុខវិជ្ជា')
+            ->assertSee('រក្សាទុកវត្តមានប្រចាំថ្ងៃ');
+
+        $storeResponse = $this->post('/panel/attendance', [
+            'class_id' => (int) $assignment->class_id,
+            'subject_id' => (int) $assignment->subject_id,
+            'date' => '2026-03-14',
+            'time_start' => '07:00',
+            'time_end' => '07:30',
+            'records' => [
+                [
+                    'student_id' => $students[0]->id,
+                    'status' => 'P',
+                    'remarks' => 'Ready',
+                ],
+            ],
+        ]);
+
+        $storeResponse->assertRedirect('/panel/attendance');
+
+        $this->assertDatabaseHas('attendance', [
+            'student_id' => $students[0]->id,
+            'class_id' => (int) $assignment->class_id,
+            'subject_id' => (int) $assignment->subject_id,
+            'date' => '2026-03-14',
+            'time_start' => '07:00:00',
+            'status' => 'P',
+        ]);
     }
 
     public function test_teacher_can_create_homework_from_web_crud(): void
@@ -613,6 +878,24 @@ class WebRoleAccessTest extends TestCase
 
         $schoolsPage->assertOk()->assertSee('School Management');
         $usersPage->assertOk()->assertSee('User Management');
+    }
+
+    public function test_super_admin_class_create_form_loads_teacher_and_student_options_before_school_selection(): void
+    {
+        $this->seed();
+
+        $superAdmin = User::query()->where('email', 'superadmin@example.com')->firstOrFail();
+        $teacher = User::query()->where('role', 'teacher')->orderBy('id')->firstOrFail();
+        $student = Student::query()->with('user')->orderBy('id')->firstOrFail();
+
+        $this->actingAs($superAdmin);
+
+        $response = $this->get('/panel/classes/create');
+
+        $response->assertOk()
+            ->assertSee('Teacher + Subject Assignment')
+            ->assertSee((string) $teacher->name)
+            ->assertSee((string) ($student->user?->name ?? 'Student'));
     }
 
     public function test_super_admin_can_open_school_scope_management_page(): void

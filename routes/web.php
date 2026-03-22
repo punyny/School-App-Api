@@ -7,6 +7,7 @@ use App\Http\Controllers\Web\AttendanceCrudController;
 use App\Http\Controllers\Web\AuthController;
 use App\Http\Controllers\Web\ClassCrudController;
 use App\Http\Controllers\Web\DashboardController;
+use App\Http\Controllers\Web\EmailVerificationController;
 use App\Http\Controllers\Web\HomeworkCrudController;
 use App\Http\Controllers\Web\IncidentReportCrudController;
 use App\Http\Controllers\Web\LeaveRequestCrudController;
@@ -44,15 +45,21 @@ Route::post('/locale', function (Request $request) {
 Route::middleware('guest')->group(function (): void {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
+    Route::get('/login/magic/{id}/{token}', [AuthController::class, 'magicLogin'])->middleware('signed:relative')->name('login.magic');
+    Route::post('/login/magic/{id}/{token}', [AuthController::class, 'consumeMagicLogin'])->middleware('signed:relative')->name('login.magic.consume');
+    Route::get('/login/mobile/{id}/{token}', [AuthController::class, 'mobileLogin'])->middleware('signed:relative')->name('login.mobile');
 });
 
 Route::middleware('auth')->post('/logout', [AuthController::class, 'logout'])->name('logout');
+Route::middleware('auth')->get('/email/verify', [EmailVerificationController::class, 'notice'])->name('verification.notice');
+Route::middleware(['auth', 'throttle:6,1'])->post('/email/verification-notification', [EmailVerificationController::class, 'send'])->name('verification.send');
+Route::middleware(['signed:relative', 'throttle:6,1'])->get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])->name('verification.verify');
 
-Route::middleware(['auth', 'role:super-admin,admin,teacher,student,parent'])
+Route::middleware(['auth', 'verified', 'role:super-admin,admin,teacher,student,parent'])
     ->get('/dashboard', [DashboardController::class, 'index'])
     ->name('dashboard');
 
-Route::middleware(['auth', 'role:super-admin,admin,teacher,student,parent'])
+Route::middleware(['auth', 'verified', 'role:super-admin,admin,teacher,student,parent'])
     ->group(function (): void {
         Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
         Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
@@ -60,7 +67,7 @@ Route::middleware(['auth', 'role:super-admin,admin,teacher,student,parent'])
 
 Route::prefix('super-admin')
     ->name('super-admin.')
-    ->middleware(['auth', 'role:super-admin', 'admin.ip'])
+    ->middleware(['auth', 'verified', 'role:super-admin', 'admin.ip'])
     ->group(function (): void {
         Route::get('/dashboard', [SuperAdminController::class, 'dashboard'])->name('dashboard');
         Route::get('/schools', [SuperAdminController::class, 'schools'])->name('schools.index');
@@ -71,7 +78,7 @@ Route::prefix('super-admin')
 
 Route::prefix('admin')
     ->name('admin.')
-    ->middleware(['auth', 'role:admin', 'admin.ip'])
+    ->middleware(['auth', 'verified', 'role:admin', 'admin.ip'])
     ->group(function (): void {
         Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
         Route::get('/users', [AdminController::class, 'users'])->name('users.index');
@@ -83,7 +90,7 @@ Route::prefix('admin')
 
 Route::prefix('teacher')
     ->name('teacher.')
-    ->middleware(['auth', 'role:teacher'])
+    ->middleware(['auth', 'verified', 'role:teacher'])
     ->group(function (): void {
         Route::get('/dashboard', [TeacherController::class, 'dashboard'])->name('dashboard');
         Route::get('/attendance', [TeacherController::class, 'attendance'])->name('attendance.index');
@@ -95,28 +102,28 @@ Route::prefix('teacher')
 
 Route::prefix('student')
     ->name('student.')
-    ->middleware(['auth', 'role:student'])
+    ->middleware(['auth', 'verified', 'role:student'])
     ->group(function (): void {
         Route::get('/dashboard', [StudentController::class, 'dashboard'])->name('dashboard');
     });
 
 Route::prefix('parent')
     ->name('parent.')
-    ->middleware(['auth', 'role:parent'])
+    ->middleware(['auth', 'verified', 'role:parent'])
     ->group(function (): void {
         Route::get('/dashboard', [ParentController::class, 'dashboard'])->name('dashboard');
     });
 
 Route::prefix('panel/announcements')
     ->name('panel.announcements.')
-    ->middleware(['auth', 'role:super-admin,admin,teacher,student,parent', 'admin.ip', 'can:web-view-announcements'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher,student,parent', 'admin.ip', 'can:web-view-announcements'])
     ->group(function (): void {
         Route::get('/', [AnnouncementCrudController::class, 'index'])->name('index');
     });
 
 Route::prefix('panel/announcements')
     ->name('panel.announcements.')
-    ->middleware(['auth', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-announcements'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-announcements'])
     ->group(function (): void {
         Route::get('/create', [AnnouncementCrudController::class, 'create'])->name('create');
         Route::post('/', [AnnouncementCrudController::class, 'store'])->name('store');
@@ -127,7 +134,7 @@ Route::prefix('panel/announcements')
 
 Route::prefix('panel/schools')
     ->name('panel.schools.')
-    ->middleware(['auth', 'role:super-admin', 'admin.ip', 'can:web-manage-schools'])
+    ->middleware(['auth', 'verified', 'role:super-admin', 'admin.ip', 'can:web-manage-schools'])
     ->group(function (): void {
         Route::get('/', [SchoolCrudController::class, 'index'])->name('index');
         Route::get('/create', [SchoolCrudController::class, 'create'])->name('create');
@@ -139,12 +146,14 @@ Route::prefix('panel/schools')
 
 Route::prefix('panel/users')
     ->name('panel.users.')
-    ->middleware(['auth', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-users'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-users'])
     ->group(function (): void {
         Route::get('/', [UserCrudController::class, 'index'])->name('index');
         Route::post('/import-csv', [UserCrudController::class, 'importCsv'])->name('import-csv');
+        Route::post('/bulk-delete', [UserCrudController::class, 'bulkDestroy'])->name('bulk-delete');
         Route::get('/create', [UserCrudController::class, 'create'])->name('create');
         Route::post('/', [UserCrudController::class, 'store'])->name('store');
+        Route::post('/{user}/resend-verification-email', [UserCrudController::class, 'resendVerification'])->name('resend-verification');
         Route::get('/{user}/edit', [UserCrudController::class, 'edit'])->name('edit');
         Route::get('/{user}', [UserCrudController::class, 'show'])->whereNumber('user')->name('show');
         Route::put('/{user}', [UserCrudController::class, 'update'])->name('update');
@@ -153,7 +162,7 @@ Route::prefix('panel/users')
 
 Route::prefix('panel/classes')
     ->name('panel.classes.')
-    ->middleware(['auth', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-classes'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-classes'])
     ->group(function (): void {
         Route::get('/', [ClassCrudController::class, 'index'])->name('index');
         Route::get('/create', [ClassCrudController::class, 'create'])->name('create');
@@ -167,7 +176,7 @@ Route::prefix('panel/classes')
 
 Route::prefix('panel/subjects')
     ->name('panel.subjects.')
-    ->middleware(['auth', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-subjects'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-subjects'])
     ->group(function (): void {
         Route::get('/', [SubjectCrudController::class, 'index'])->name('index');
         Route::post('/install-khmer-core', [SubjectCrudController::class, 'installKhmerCore'])->name('install-khmer-core');
@@ -180,7 +189,7 @@ Route::prefix('panel/subjects')
 
 Route::prefix('panel/timetables')
     ->name('panel.timetables.')
-    ->middleware(['auth', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-manage-timetables'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-manage-timetables'])
     ->group(function (): void {
         Route::get('/', [TimetableCrudController::class, 'index'])->name('index');
         Route::get('/create', [TimetableCrudController::class, 'create'])->name('create');
@@ -192,7 +201,7 @@ Route::prefix('panel/timetables')
 
 Route::prefix('panel/students')
     ->name('panel.students.')
-    ->middleware(['auth', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-students'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-students'])
     ->group(function (): void {
         Route::get('/', [StudentCrudController::class, 'index'])->name('index');
         Route::post('/import-csv', [StudentCrudController::class, 'importCsv'])->name('import-csv');
@@ -206,7 +215,7 @@ Route::prefix('panel/students')
 
 Route::prefix('panel/attendance')
     ->name('panel.attendance.')
-    ->middleware(['auth', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-manage-attendance'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-manage-attendance'])
     ->group(function (): void {
         Route::get('/', [AttendanceCrudController::class, 'index'])->name('index');
         Route::get('/create', [AttendanceCrudController::class, 'create'])->name('create');
@@ -218,7 +227,7 @@ Route::prefix('panel/attendance')
 
 Route::prefix('panel/homeworks')
     ->name('panel.homeworks.')
-    ->middleware(['auth', 'role:teacher', 'admin.ip', 'can:web-manage-homeworks'])
+    ->middleware(['auth', 'verified', 'role:teacher', 'admin.ip', 'can:web-manage-homeworks'])
     ->group(function (): void {
         Route::get('/', [HomeworkCrudController::class, 'index'])->name('index');
         Route::get('/create', [HomeworkCrudController::class, 'create'])->name('create');
@@ -230,7 +239,7 @@ Route::prefix('panel/homeworks')
 
 Route::prefix('panel/media')
     ->name('panel.media.')
-    ->middleware(['auth', 'role:super-admin,admin,teacher', 'admin.ip'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher', 'admin.ip'])
     ->group(function (): void {
         Route::get('/', [MediaCrudController::class, 'index'])->name('index');
         Route::delete('/{media}', [MediaCrudController::class, 'destroy'])->name('destroy');
@@ -238,7 +247,7 @@ Route::prefix('panel/media')
 
 Route::prefix('panel/scores')
     ->name('panel.scores.')
-    ->middleware(['auth', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-manage-scores'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-manage-scores'])
     ->group(function (): void {
         Route::get('/', [ScoreCrudController::class, 'index'])->name('index');
         Route::get('/create', [ScoreCrudController::class, 'create'])->name('create');
@@ -250,7 +259,7 @@ Route::prefix('panel/scores')
 
 Route::prefix('panel/leave-requests')
     ->name('panel.leave-requests.')
-    ->middleware(['auth', 'role:super-admin,admin,teacher,student,parent', 'admin.ip', 'can:web-view-leave-requests'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher,student,parent', 'admin.ip', 'can:web-view-leave-requests'])
     ->group(function (): void {
         Route::get('/', [LeaveRequestCrudController::class, 'index'])->name('index');
         Route::get('/{leaveRequest}/edit', [LeaveRequestCrudController::class, 'edit'])->name('edit');
@@ -260,7 +269,7 @@ Route::prefix('panel/leave-requests')
 
 Route::prefix('panel/leave-requests')
     ->name('panel.leave-requests.')
-    ->middleware(['auth', 'role:student,parent', 'admin.ip', 'can:web-create-leave-requests'])
+    ->middleware(['auth', 'verified', 'role:student,parent', 'admin.ip', 'can:web-create-leave-requests'])
     ->group(function (): void {
         Route::get('/create', [LeaveRequestCrudController::class, 'create'])->name('create');
         Route::post('/', [LeaveRequestCrudController::class, 'store'])->name('store');
@@ -268,7 +277,7 @@ Route::prefix('panel/leave-requests')
 
 Route::prefix('panel/messages')
     ->name('panel.messages.')
-    ->middleware(['auth', 'role:super-admin,admin,teacher,student,parent', 'admin.ip', 'can:web-view-messages'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher,student,parent', 'admin.ip', 'can:web-view-messages'])
     ->group(function (): void {
         Route::get('/', [MessageCrudController::class, 'index'])->name('index');
         Route::get('/{message}', [MessageCrudController::class, 'show'])->whereNumber('message')->name('show');
@@ -276,7 +285,7 @@ Route::prefix('panel/messages')
 
 Route::prefix('panel/messages')
     ->name('panel.messages.')
-    ->middleware(['auth', 'role:super-admin,admin,teacher,student', 'admin.ip', 'can:web-create-messages'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher,student', 'admin.ip', 'can:web-create-messages'])
     ->group(function (): void {
         Route::get('/create', [MessageCrudController::class, 'create'])->name('create');
         Route::post('/', [MessageCrudController::class, 'store'])->name('store');
@@ -284,7 +293,7 @@ Route::prefix('panel/messages')
 
 Route::prefix('panel/notifications')
     ->name('panel.notifications.')
-    ->middleware(['auth', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-manage-notifications'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-manage-notifications'])
     ->group(function (): void {
         Route::get('/', [NotificationCrudController::class, 'index'])->name('index');
         Route::post('/broadcast', [NotificationCrudController::class, 'broadcast'])->name('broadcast');
@@ -297,7 +306,7 @@ Route::prefix('panel/notifications')
 
 Route::prefix('panel/incident-reports')
     ->name('panel.incident-reports.')
-    ->middleware(['auth', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-manage-incident-reports'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-manage-incident-reports'])
     ->group(function (): void {
         Route::get('/', [IncidentReportCrudController::class, 'index'])->name('index');
         Route::get('/create', [IncidentReportCrudController::class, 'create'])->name('create');
@@ -309,7 +318,7 @@ Route::prefix('panel/incident-reports')
 
 Route::prefix('panel/audit-logs')
     ->name('panel.audit-logs.')
-    ->middleware(['auth', 'role:super-admin,admin', 'admin.ip', 'can:web-view-audit-logs'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin', 'admin.ip', 'can:web-view-audit-logs'])
     ->group(function (): void {
         Route::get('/', [AuditLogCrudController::class, 'index'])->name('index');
     });

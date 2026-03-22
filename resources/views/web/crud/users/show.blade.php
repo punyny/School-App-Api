@@ -17,7 +17,7 @@
     @endphp
 
     <h1 class="title">User Detail</h1>
-    <p class="subtitle">View complete user information from API.</p>
+    <p class="subtitle">View complete user information and related details.</p>
 
     <div class="nav">
         <a href="{{ route('panel.users.index') }}">Back to list</a>
@@ -77,6 +77,10 @@
                     <input type="text" value="{{ $item['email'] ?? '-' }}" disabled>
                 </div>
                 <div>
+                    <label>Email Verified</label>
+                    <input type="text" value="{{ !empty($item['email_verified_at']) ? 'Verified' : 'Pending verification' }}" disabled>
+                </div>
+                <div>
                     <label>Role</label>
                     <input type="text" value="{{ $item['role'] ?? '-' }}" disabled>
                 </div>
@@ -108,6 +112,13 @@
 
             <label>Bio</label>
             <textarea rows="3" disabled>{{ $item['bio'] ?? '-' }}</textarea>
+
+            @if (empty($item['email_verified_at']) && !empty($item['id']))
+                <form method="POST" action="{{ route('panel.users.resend-verification', $item['id']) }}" style="margin-top:16px;">
+                    @csrf
+                    <button type="submit">Resend verification email</button>
+                </form>
+            @endif
         </section>
 
         @if($studentProfile)

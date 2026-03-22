@@ -2,7 +2,7 @@
 
 @section('content')
     <h1 class="title">{{ $mode === 'create' ? 'Create Incident Report' : 'Edit Incident Report' }}</h1>
-    <p class="subtitle">Data will be submitted to real API endpoint.</p>
+    <p class="subtitle">Fill in the form below to save the incident report.</p>
 
     <div class="nav">
         <a href="{{ route('panel.incident-reports.index') }}">Back to list</a>

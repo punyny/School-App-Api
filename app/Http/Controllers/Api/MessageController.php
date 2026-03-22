@@ -290,18 +290,22 @@ class MessageController extends Controller
         }
 
         if ($actorRole === 'teacher') {
-            if ($targetRole !== 'student') {
-                return false;
-            }
-
             $teacherClassIds = $user->teachingClasses()->pluck('classes.id')->all();
             if ($teacherClassIds === []) {
                 return false;
             }
 
-            $studentClassId = $this->studentClassIdByUser($targetUserId);
+            if ($targetRole === 'student') {
+                $studentClassId = $this->studentClassIdByUser($targetUserId);
 
-            return $studentClassId !== null && in_array($studentClassId, $teacherClassIds, true);
+                return $studentClassId !== null && in_array($studentClassId, $teacherClassIds, true);
+            }
+
+            if ($targetRole === 'parent') {
+                return $this->parentHasChildInClasses($targetUserId, $teacherClassIds);
+            }
+
+            return false;
         }
 
         if ($actorRole === 'student') {
@@ -565,6 +569,22 @@ class MessageController extends Controller
             ->value('class_id');
 
         return $classId ? (int) $classId : null;
+    }
+
+    /**
+     * @param  array<int, int>  $classIds
+     */
+    private function parentHasChildInClasses(int $parentUserId, array $classIds): bool
+    {
+        if ($classIds === []) {
+            return false;
+        }
+
+        return DB::table('parent_child')
+            ->join('students', 'students.id', '=', 'parent_child.student_id')
+            ->where('parent_child.parent_id', $parentUserId)
+            ->whereIn('students.class_id', $classIds)
+            ->exists();
     }
 
     private function assertSingleMessageTarget(mixed $receiverId, mixed $classId): void

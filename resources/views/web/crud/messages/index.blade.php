@@ -1,8 +1,8 @@
 @extends('web.layouts.app')
 
 @section('content')
-    <h1 class="title">Message Management (API)</h1>
-    <p class="subtitle">Personal and class messages (one-to-one and one-to-many).</p>
+    <h1 class="title">Message Management</h1>
+    <p class="subtitle">Manage personal, class, and group messages.</p>
 
     <div class="nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>

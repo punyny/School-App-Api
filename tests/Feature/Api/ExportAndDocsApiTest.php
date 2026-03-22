@@ -24,11 +24,13 @@ class ExportAndDocsApiTest extends TestCase
         $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
         $student = Student::query()->firstOrFail();
         $class = SchoolClass::query()->firstOrFail();
+        $subject = Subject::query()->firstOrFail();
 
         Attendance::query()->create([
             'student_id' => $student->id,
             'class_id' => $class->id,
-            'date' => '2026-03-10',
+            'subject_id' => $subject->id,
+            'date' => '2030-05-10',
             'time_start' => '08:00:00',
             'time_end' => '09:00:00',
             'status' => 'P',
@@ -40,6 +42,7 @@ class ExportAndDocsApiTest extends TestCase
         $response->assertOk();
         $response->assertHeader('content-type', 'text/csv; charset=UTF-8');
         $this->assertStringContainsString('attendance_id,date,time_start', $response->streamedContent());
+        $this->assertStringContainsString('subject_name', $response->streamedContent());
         $this->assertStringContainsString(',P,', $response->streamedContent());
     }
 
@@ -50,11 +53,13 @@ class ExportAndDocsApiTest extends TestCase
         $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
         $student = Student::query()->firstOrFail();
         $class = SchoolClass::query()->firstOrFail();
+        $subject = Subject::query()->firstOrFail();
 
         Attendance::query()->create([
             'student_id' => $student->id,
             'class_id' => $class->id,
-            'date' => '2026-03-10',
+            'subject_id' => $subject->id,
+            'date' => '2030-06-10',
             'time_start' => '08:00:00',
             'time_end' => '09:00:00',
             'status' => 'P',

@@ -74,7 +74,7 @@ class InternalApiClient
         $hasFiles = $files !== [];
 
         if (in_array($method, ['GET', 'DELETE'], true)) {
-            $queryData = $data;
+            $queryData = $this->normalizeQueryParameters($data);
         } else {
             if ($hasFiles) {
                 $queryData = $formData;
@@ -201,5 +201,43 @@ class InternalApiClient
         $request->session()->put('web_api_token_id', $newToken->accessToken->id);
 
         return $newToken->plainTextToken;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function normalizeQueryParameters(array $data): array
+    {
+        $normalized = [];
+
+        foreach ($data as $key => $value) {
+            $normalized[$key] = $this->normalizeQueryParameterValue($value);
+        }
+
+        return $normalized;
+    }
+
+    private function normalizeQueryParameterValue(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            $normalized = [];
+
+            foreach ($value as $key => $nestedValue) {
+                $normalized[$key] = $this->normalizeQueryParameterValue($nestedValue);
+            }
+
+            return $normalized;
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (string) $value;
+        }
+
+        return $value;
     }
 }

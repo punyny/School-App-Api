@@ -420,6 +420,7 @@ class DemoSchoolSeeder extends Seeder
                 'image_url' => $attributes['image_url'] ?? null,
                 'active' => $attributes['active'] ?? true,
                 'is_active' => $attributes['active'] ?? true,
+                'email_verified_at' => $attributes['email_verified_at'] ?? now(),
                 'last_login' => $attributes['last_login'] ?? null,
                 'password' => $password,
                 'password_hash' => $password,
@@ -429,6 +430,7 @@ class DemoSchoolSeeder extends Seeder
 
     private function seedAttendance(Student $student, SchoolClass $class): void
     {
+        $subjectId = $class->subjects()->orderBy('subjects.id')->value('subjects.id');
         $records = [
             [now()->subDays(12)->toDateString(), '08:00:00', '09:00:00', 'P'],
             [now()->subDays(11)->toDateString(), '08:00:00', '09:00:00', 'A'],
@@ -445,6 +447,7 @@ class DemoSchoolSeeder extends Seeder
                 ],
                 [
                     'time_end' => $end,
+                    'subject_id' => $subjectId,
                     'status' => $status,
                 ]
             );

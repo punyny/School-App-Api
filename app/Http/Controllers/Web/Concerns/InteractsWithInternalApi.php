@@ -69,11 +69,15 @@ trait InteractsWithInternalApi
         if ($needSubjects) {
             $subjectItems = $this->fetchOptionItems($request, $api, '/api/subjects');
 
-            foreach ($subjectItems as $subjectItem) {
-                $option = $this->formatSubjectOption($subjectItem);
-                if ($option !== null) {
-                    $options['subjectOptions'][] = $option;
+            if ($subjectItems !== []) {
+                foreach ($subjectItems as $subjectItem) {
+                    $option = $this->formatSubjectOption($subjectItem);
+                    if ($option !== null) {
+                        $options['subjectOptions'][] = $option;
+                    }
                 }
+            } else {
+                $options['subjectOptions'] = $this->buildSubjectOptionsFromClasses($request, $api, $classItems);
             }
         }
 
@@ -162,6 +166,53 @@ trait InteractsWithInternalApi
                 }
 
                 $option = $this->formatStudentOption($studentItem, $className, $classId);
+                if ($option !== null) {
+                    $optionsById[$option['id']] = $option;
+                }
+            }
+        }
+
+        return array_values($optionsById);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $classItems
+     * @return array<int, array{id:int,label:string}>
+     */
+    private function buildSubjectOptionsFromClasses(
+        Request $request,
+        InternalApiClient $api,
+        array $classItems
+    ): array {
+        $optionsById = [];
+
+        foreach (array_slice($classItems, 0, 60) as $classItem) {
+            $classId = (int) ($classItem['id'] ?? 0);
+            if ($classId <= 0) {
+                continue;
+            }
+
+            $classResult = $api->get($request, '/api/classes/'.$classId);
+            if (($classResult['status'] ?? 0) !== 200) {
+                continue;
+            }
+
+            $classPayload = $classResult['data']['data'] ?? null;
+            if (! is_array($classPayload)) {
+                continue;
+            }
+
+            $subjects = $classPayload['subjects'] ?? [];
+            if (! is_array($subjects)) {
+                continue;
+            }
+
+            foreach ($subjects as $subjectItem) {
+                if (! is_array($subjectItem)) {
+                    continue;
+                }
+
+                $option = $this->formatSubjectOption($subjectItem);
                 if ($option !== null) {
                     $optionsById[$option['id']] = $option;
                 }

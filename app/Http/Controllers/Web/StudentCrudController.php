@@ -5,11 +5,12 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\InteractsWithInternalApi;
 use App\Services\InternalApiClient;
-use App\Support\PasswordRule;
 use App\Support\ProfileImageStorage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class StudentCrudController extends Controller
@@ -23,8 +24,23 @@ class StudentCrudController extends Controller
             'class_id' => ['nullable', 'integer'],
             'search' => ['nullable', 'string', 'max:255'],
             'active' => ['nullable', 'in:0,1'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'per_page' => ['nullable', 'string', 'max:20'],
         ]);
+
+        $rawPerPage = trim((string) ($filters['per_page'] ?? ''));
+        if ($rawPerPage !== '') {
+            if (Str::lower($rawPerPage) === 'all') {
+                $filters['per_page'] = 'all';
+            } elseif (ctype_digit($rawPerPage) && (int) $rawPerPage >= 1 && (int) $rawPerPage <= 5000) {
+                $filters['per_page'] = (string) ((int) $rawPerPage);
+            } else {
+                throw ValidationException::withMessages([
+                    'per_page' => ['per_page must be 20 or all.'],
+                ]);
+            }
+        } else {
+            unset($filters['per_page']);
+        }
 
         $result = $api->get($request, '/api/students', array_filter($filters, fn ($v) => $v !== null && $v !== ''));
 
@@ -177,9 +193,6 @@ class StudentCrudController extends Controller
      */
     private function validatePayload(Request $request, bool $isCreate): array
     {
-        $passwordRule = $isCreate
-            ? ['required', 'string', 'max:255', PasswordRule::defaults()]
-            : ['nullable', 'string', 'max:255', PasswordRule::defaults()];
         $studentIdRule = ['nullable', 'string', 'max:100'];
         $khmerNameRule = $isCreate
             ? ['required', 'string', 'max:255']
@@ -194,7 +207,6 @@ class StudentCrudController extends Controller
             'khmer_name' => $khmerNameRule,
             'name' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255'],
-            'password' => $passwordRule,
             'phone' => ['nullable', 'string', 'max:20'],
             'gender' => ['nullable', 'in:male,female,other'],
             'dob' => ['nullable', 'date'],
@@ -218,10 +230,6 @@ class StudentCrudController extends Controller
 
         if ($request->user()->role !== 'super-admin') {
             unset($payload['school_id']);
-        }
-
-        if (! $isCreate && empty($payload['password'])) {
-            unset($payload['password']);
         }
 
         $rawParentIds = trim((string) Arr::get($payload, 'parent_ids', ''));

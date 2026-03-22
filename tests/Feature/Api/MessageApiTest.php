@@ -57,6 +57,24 @@ class MessageApiTest extends TestCase
             ->assertJsonPath('data.receiver_id', $teacher->id);
     }
 
+    public function test_teacher_can_send_direct_message_to_parent_in_their_class_scope(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $parent = User::query()->where('email', 'parent@example.com')->firstOrFail();
+
+        Sanctum::actingAs($teacher);
+        $response = $this->postJson('/api/messages', [
+            'receiver_id' => $parent->id,
+            'content' => 'Please review your child attendance update.',
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.sender_id', $teacher->id)
+            ->assertJsonPath('data.receiver_id', $parent->id);
+    }
+
     public function test_parent_cannot_send_message(): void
     {
         $this->seed();
