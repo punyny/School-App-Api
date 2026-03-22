@@ -1,0 +1,750 @@
+// Use DBML to define your database structure
+// Docs: https://dbml.dbdiagram.io/docs
+// Generated from Sala Digital database snapshot on 2026-03-21
+
+Table academic_years {
+  academic_year_id bigint [primary key, increment, not null]
+  year_name varchar [not null, unique]
+  start_date date [not null]
+  end_date date [not null]
+  is_current boolean [not null, default: false]
+  created_at datetime
+  updated_at datetime
+}
+
+Table announcements {
+  id bigint [primary key, increment, not null]
+  title varchar [not null]
+  content text [not null]
+  date date [not null]
+  school_id bigint [not null]
+  class_id bigint
+  created_at datetime
+  updated_at datetime
+  message text
+  audience varchar [not null, default: "All"]
+  posted_by int
+  file_attachments text [note: "JSON/text payload"]
+  target_role varchar
+  target_user_id bigint
+}
+
+Table attendance {
+  id bigint [primary key, increment, not null]
+  student_id bigint [not null]
+  class_id bigint [not null]
+  date date [not null]
+  time_start time [not null]
+  time_end time
+  status varchar [not null]
+  created_at datetime
+  updated_at datetime
+  enrollment_id bigint
+  attendance_date date
+  remarks varchar
+  subject_id bigint
+
+  indexes {
+    (student_id, class_id, date, time_start, subject_id) [unique, name: "attendance_student_class_date_start_subject_unique"]
+    (subject_id, date) [name: "attendance_subject_date_index"]
+    (student_id, date) [name: "attendance_student_date_index"]
+    (enrollment_id, attendance_date) [unique, name: "attendance_enrollment_date_unique"]
+    (class_id, date) [name: "attendance_class_date_index"]
+  }
+}
+
+Table audit_logs {
+  id bigint [primary key, increment, not null]
+  actor_id bigint
+  school_id bigint
+  actor_name varchar [not null]
+  actor_role varchar [not null]
+  method varchar [not null]
+  endpoint varchar [not null]
+  action varchar [not null]
+  resource_type varchar
+  resource_id bigint
+  ip_address varchar
+  user_agent text
+  request_payload text
+  status_code int
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (method, created_at) [name: "audit_logs_method_created_at_index"]
+    (resource_type, resource_id) [name: "audit_logs_resource_type_resource_id_index"]
+    (actor_role, created_at) [name: "audit_logs_actor_role_created_at_index"]
+    (school_id, created_at) [name: "audit_logs_school_id_created_at_index"]
+    (actor_id, created_at) [name: "audit_logs_actor_id_created_at_index"]
+  }
+}
+
+Table cache {
+  key varchar [primary key, not null]
+  value text [not null]
+  expiration int [not null]
+}
+
+Table cache_locks {
+  key varchar [primary key, not null]
+  owner varchar [not null]
+  expiration int [not null]
+}
+
+Table classes {
+  id bigint [primary key, increment, not null]
+  name varchar [not null]
+  grade_level varchar
+  school_id bigint [not null]
+  created_at datetime
+  updated_at datetime
+  deleted_at datetime
+  room varchar
+  class_name varchar
+
+  indexes {
+    (school_id, name, grade_level) [unique, name: "classes_school_name_grade_unique"]
+  }
+}
+
+Table enrollments {
+  enrollment_id bigint [primary key, increment, not null]
+  student_id bigint [not null]
+  academic_year_id bigint [not null]
+  class_id bigint [not null]
+  section_id bigint [not null]
+  roll_no varchar
+  enrollment_date date [not null]
+  status varchar [not null, default: "Enrolled", note: "Enrolled | Promoted | Completed | Dropped"]
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (section_id, roll_no) [unique, name: "enrollments_section_roll_no_unique"]
+    (student_id, academic_year_id) [unique, name: "enrollments_student_year_unique"]
+  }
+}
+
+Table exam_subjects {
+  exam_subject_id bigint [primary key, increment, not null]
+  exam_id bigint [not null]
+  subject_id bigint [not null]
+  max_marks decimal [not null, default: 100]
+  pass_marks decimal [not null, default: 40]
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (exam_id, subject_id) [unique, name: "exam_subjects_exam_subject_unique"]
+  }
+}
+
+Table exams {
+  exam_id bigint [primary key, increment, not null]
+  term_id bigint [not null]
+  exam_name varchar [not null]
+  start_date date
+  end_date date
+  created_at datetime
+  updated_at datetime
+}
+
+Table failed_jobs {
+  id bigint [primary key, increment, not null]
+  uuid varchar [not null, unique]
+  connection text [not null]
+  queue text [not null]
+  payload text [not null]
+  exception text [not null]
+  failed_at datetime [not null, default: CURRENT_TIMESTAMP]
+}
+
+Table fee_types {
+  fee_type_id bigint [primary key, increment, not null]
+  fee_name varchar [not null, unique]
+  description varchar
+  default_amount decimal [not null, default: false]
+  created_at datetime
+  updated_at datetime
+}
+
+Table guardians {
+  guardian_id bigint [primary key, increment, not null]
+  user_id bigint [unique]
+  first_name varchar [not null]
+  last_name varchar [not null]
+  relationship_to_student varchar [not null]
+  phone varchar
+  email varchar
+  address text
+  created_at datetime
+  updated_at datetime
+}
+
+Table homeworks {
+  id bigint [primary key, increment, not null]
+  class_id bigint [not null]
+  subject_id bigint [not null]
+  title varchar [not null]
+  question text
+  due_date date
+  file_attachments text [note: "JSON/text payload"]
+  created_at datetime
+  updated_at datetime
+  due_time time
+
+  indexes {
+    (due_date, due_time) [name: "homeworks_due_date_due_time_index"]
+  }
+}
+
+Table homeworkstatus {
+  id bigint [primary key, increment, not null]
+  homework_id bigint [not null]
+  student_id bigint [not null]
+  status varchar [not null]
+  completion_date date
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (homework_id, student_id) [unique, name: "homeworkstatus_homework_student_unique"]
+  }
+}
+
+Table incidentreport {
+  id bigint [primary key, increment, not null]
+  student_id bigint [not null]
+  description text [not null]
+  date date [not null]
+  type varchar
+  acknowledged boolean [not null, default: false]
+  reporter_id bigint
+  created_at datetime
+  updated_at datetime
+}
+
+Table job_batches {
+  id varchar [primary key, not null]
+  name varchar [not null]
+  total_jobs int [not null]
+  pending_jobs int [not null]
+  failed_jobs int [not null]
+  failed_job_ids text [not null]
+  options text
+  cancelled_at int
+  created_at int [not null]
+  finished_at int
+}
+
+Table jobs {
+  id bigint [primary key, increment, not null]
+  queue varchar [not null]
+  payload text [not null]
+  attempts int [not null]
+  reserved_at int
+  available_at int [not null]
+  created_at int [not null]
+}
+
+Table leave_request_recipients {
+  id bigint [primary key, increment, not null]
+  leave_request_id bigint [not null]
+  user_id bigint [not null]
+  recipient_role varchar
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (leave_request_id, user_id) [unique, name: "leave_request_recipient_unique"]
+  }
+}
+
+Table leaverequest {
+  id bigint [primary key, increment, not null]
+  student_id bigint [not null]
+  subject_id bigint
+  request_type varchar [not null]
+  start_date date [not null]
+  start_time time
+  reason text
+  status varchar [not null, default: "pending"]
+  submitted_by int
+  created_at datetime
+  updated_at datetime
+  end_date date
+  end_time time
+  return_date date
+  total_days int
+  subject_ids text [note: "JSON/text payload"]
+  approved_by int
+  approved_at datetime
+}
+
+Table marks {
+  mark_id bigint [primary key, increment, not null]
+  exam_subject_id bigint [not null]
+  enrollment_id bigint [not null]
+  obtained_marks decimal [not null]
+  grade_letter varchar
+  remarks varchar
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (exam_subject_id, enrollment_id) [unique, name: "marks_exam_subject_enrollment_unique"]
+  }
+}
+
+Table media {
+  id bigint [primary key, increment, not null]
+  school_id bigint
+  uploaded_by_user_id bigint
+  mediable_type varchar [not null]
+  mediable_id bigint [not null]
+  category varchar [not null, default: "general"]
+  disk varchar [not null, default: "public"]
+  directory varchar
+  path varchar [not null]
+  url text [not null]
+  original_name varchar [not null]
+  mime_type varchar
+  extension varchar
+  size_bytes int
+  is_primary boolean [not null, default: false]
+  metadata text [note: "JSON/text payload"]
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (category, is_primary) [name: "media_category_primary_index"]
+    (mediable_type, mediable_id) [name: "media_mediable_index"]
+  }
+}
+
+Table message_reads {
+  id bigint [primary key, increment, not null]
+  message_id bigint [not null]
+  user_id bigint [not null]
+  seen_at datetime [not null]
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (user_id, seen_at) [name: "message_reads_user_seen_index"]
+    (message_id, user_id) [unique, name: "message_reads_message_user_unique"]
+  }
+}
+
+Table messages {
+  id bigint [primary key, increment, not null]
+  sender_id bigint [not null]
+  receiver_id bigint
+  class_id bigint
+  content text [not null]
+  date datetime [not null]
+  created_at datetime
+  updated_at datetime
+}
+
+Table migrations {
+  id bigint [primary key, increment, not null]
+  migration varchar [not null]
+  batch int [not null]
+}
+
+Table notification {
+  id bigint [primary key, increment, not null]
+  user_id bigint [not null]
+  title varchar [not null]
+  content text [not null]
+  date datetime [not null]
+  read_status boolean [not null, default: false]
+}
+
+Table parent_child {
+  parent_id bigint [not null]
+  student_id bigint [not null]
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (parent_id, student_id) [unique, name: "parent_child_parent_student_unique"]
+  }
+}
+
+Table password_reset_tokens {
+  email varchar [primary key, not null]
+  token varchar [not null]
+  created_at datetime
+}
+
+Table payments {
+  payment_id bigint [primary key, increment, not null]
+  student_fee_id bigint [not null]
+  amount_paid decimal [not null]
+  payment_date date [not null]
+  payment_method varchar [not null, note: "Cash | Bank | Card | Mobile Money"]
+  reference_no varchar
+  received_by int
+  created_at datetime
+  updated_at datetime
+}
+
+Table personal_access_tokens {
+  id bigint [primary key, increment, not null]
+  tokenable_type varchar [not null]
+  tokenable_id bigint [not null]
+  name text [not null]
+  token varchar [not null, unique]
+  abilities text
+  last_used_at datetime
+  expires_at datetime
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (tokenable_type, tokenable_id) [name: "personal_access_tokens_tokenable_type_tokenable_id_index"]
+  }
+}
+
+Table roles {
+  role_id bigint [primary key, increment, not null]
+  role_name varchar [not null, unique]
+}
+
+Table schools {
+  id bigint [primary key, increment, not null]
+  name varchar [not null]
+  location varchar
+  config_details text [note: "JSON/text payload"]
+  created_at datetime
+  updated_at datetime
+  school_code varchar [unique]
+}
+
+Table scores {
+  id bigint [primary key, increment, not null]
+  student_id bigint [not null]
+  subject_id bigint [not null]
+  class_id bigint [not null]
+  exam_score decimal [not null, default: false]
+  total_score decimal [not null, default: false]
+  month int
+  quarter int
+  period varchar
+  grade varchar
+  created_at datetime
+  updated_at datetime
+  assessment_type varchar [not null, default: "monthly"]
+  semester int
+  academic_year varchar
+  rank_in_class int
+
+  indexes {
+    (student_id, assessment_type, academic_year) [name: "scores_student_assessment_year_index"]
+    (class_id, subject_id, assessment_type, academic_year, month, semester) [name: "scores_class_subject_assessment_window_index"]
+    (student_id, month, quarter, period) [name: "scores_student_month_quarter_period_index"]
+  }
+}
+
+Table sections {
+  section_id bigint [primary key, increment, not null]
+  class_id bigint [not null]
+  academic_year_id bigint [not null]
+  section_name varchar [not null]
+  class_teacher_id bigint
+  room_no varchar
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (class_id, academic_year_id, section_name) [unique, name: "sections_class_year_name_unique"]
+  }
+}
+
+Table sessions {
+  id varchar [primary key, not null]
+  user_id bigint
+  ip_address varchar
+  user_agent text
+  payload text [not null]
+  last_activity int [not null]
+}
+
+Table student_fees {
+  student_fee_id bigint [primary key, increment, not null]
+  enrollment_id bigint [not null]
+  fee_type_id bigint [not null]
+  amount_due decimal [not null]
+  due_date date [not null]
+  status varchar [not null, default: "Unpaid", note: "Unpaid | Partially Paid | Paid | Waived"]
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (enrollment_id, fee_type_id, due_date) [unique, name: "student_fees_unique"]
+  }
+}
+
+Table student_guardians {
+  student_id bigint [primary key, not null]
+  guardian_id bigint [primary key, not null]
+  is_primary boolean [not null, default: false]
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (student_id, guardian_id) [unique, name: "sqlite_autoindex_student_guardians_1"]
+  }
+}
+
+Table students {
+  id bigint [primary key, increment, not null]
+  user_id bigint [not null, unique]
+  grade varchar
+  class_id bigint
+  created_at datetime
+  updated_at datetime
+  deleted_at datetime
+  student_code varchar [unique]
+  parent_name varchar
+  admission_no varchar [unique]
+  first_name varchar
+  last_name varchar
+  gender varchar
+  date_of_birth date
+  phone varchar
+  email varchar
+  address text
+  admission_date date
+  status varchar [not null, default: "Active"]
+}
+
+Table subjects {
+  id bigint [primary key, increment, not null]
+  name varchar [not null]
+  school_id bigint [not null]
+  created_at datetime
+  updated_at datetime
+  subject_code varchar [unique]
+  subject_name varchar
+  is_optional boolean [not null, default: false]
+  full_score decimal [not null, default: 100]
+
+  indexes {
+    (school_id, name) [unique, name: "subjects_school_name_unique"]
+  }
+}
+
+Table teacher_assignments {
+  assignment_id bigint [primary key, increment, not null]
+  teacher_id bigint [not null]
+  subject_id bigint [not null]
+  section_id bigint [not null]
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (teacher_id, subject_id, section_id) [unique, name: "teacher_assignments_unique"]
+  }
+}
+
+Table teacher_class {
+  teacher_id bigint [not null]
+  class_id bigint [not null]
+  subject_id bigint [not null]
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (teacher_id, class_id, subject_id) [unique, name: "teacher_class_unique"]
+  }
+}
+
+Table teachers {
+  teacher_id bigint [primary key, increment, not null]
+  user_id bigint [unique]
+  employee_no varchar [not null, unique]
+  first_name varchar [not null]
+  last_name varchar [not null]
+  phone varchar
+  email varchar
+  specialization varchar
+  hire_date date [not null]
+  status varchar [not null, default: "Active", note: "Active | On Leave | Inactive"]
+  created_at datetime
+  updated_at datetime
+}
+
+Table terms {
+  term_id bigint [primary key, increment, not null]
+  academic_year_id bigint [not null]
+  term_name varchar [not null]
+  start_date date [not null]
+  end_date date [not null]
+  created_at datetime
+  updated_at datetime
+
+  indexes {
+    (academic_year_id, term_name) [unique, name: "terms_year_term_name_unique"]
+  }
+}
+
+Table timetables {
+  id bigint [primary key, increment, not null]
+  class_id bigint [not null]
+  subject_id bigint [not null]
+  teacher_id bigint [not null]
+  day_of_week varchar [not null]
+  time_start time [not null]
+  time_end time [not null]
+  created_at datetime
+  updated_at datetime
+  section_id bigint
+  room_no varchar
+
+  indexes {
+    (class_id, day_of_week, time_start) [name: "timetables_class_day_time_index"]
+  }
+}
+
+Table users {
+  id bigint [primary key, increment, not null]
+  name varchar [not null]
+  email varchar [not null]
+  email_verified_at datetime
+  password varchar [not null, note: "Hashed password"]
+  remember_token varchar
+  created_at datetime
+  updated_at datetime
+  school_id bigint
+  role varchar [not null, default: "student"]
+  phone varchar
+  password_hash varchar [note: "Hashed password"]
+  address varchar
+  bio text
+  image_url text
+  active boolean [not null, default: true]
+  last_login datetime
+  deleted_at datetime
+  user_code varchar
+  first_name varchar
+  last_name varchar
+  khmer_name varchar
+  gender varchar
+  dob date
+  username varchar [unique]
+  role_id bigint
+  is_active boolean [not null, default: true]
+
+  indexes {
+    (school_id, user_code) [unique, name: "users_school_id_user_code_unique"]
+    (school_id, email) [unique, name: "users_school_id_email_unique"]
+  }
+}
+
+Ref: announcements.target_user_id > users.id
+Ref: announcements.class_id > classes.id
+Ref: announcements.school_id > schools.id
+Ref: announcements.posted_by > users.id
+Ref: attendance.subject_id > subjects.id
+Ref: attendance.class_id > classes.id
+Ref: attendance.student_id > students.id
+Ref: attendance.enrollment_id > enrollments.enrollment_id
+Ref: audit_logs.school_id > schools.id
+Ref: audit_logs.actor_id > users.id
+Ref: classes.school_id > schools.id
+Ref: enrollments.section_id > sections.section_id
+Ref: enrollments.academic_year_id > academic_years.academic_year_id
+Ref: enrollments.student_id > students.id
+Ref: enrollments.class_id > classes.id
+Ref: exam_subjects.exam_id > exams.exam_id
+Ref: exam_subjects.subject_id > subjects.id
+Ref: exams.term_id > terms.term_id
+Ref: guardians.user_id > users.id
+Ref: homeworks.subject_id > subjects.id
+Ref: homeworks.class_id > classes.id
+Ref: homeworkstatus.student_id > students.id
+Ref: homeworkstatus.homework_id > homeworks.id
+Ref: incidentreport.reporter_id > users.id
+Ref: incidentreport.student_id > students.id
+Ref: leave_request_recipients.user_id > users.id
+Ref: leave_request_recipients.leave_request_id > leaverequest.id
+Ref: leaverequest.approved_by > users.id
+Ref: leaverequest.student_id > students.id
+Ref: leaverequest.subject_id > subjects.id
+Ref: leaverequest.submitted_by > users.id
+Ref: marks.enrollment_id > enrollments.enrollment_id
+Ref: marks.exam_subject_id > exam_subjects.exam_subject_id
+Ref: media.uploaded_by_user_id > users.id
+Ref: media.school_id > schools.id
+Ref: message_reads.user_id > users.id
+Ref: message_reads.message_id > messages.id
+Ref: messages.class_id > classes.id
+Ref: messages.receiver_id > users.id
+Ref: messages.sender_id > users.id
+Ref: notification.user_id > users.id
+Ref: parent_child.student_id > students.id
+Ref: parent_child.parent_id > users.id
+Ref: payments.student_fee_id > student_fees.student_fee_id
+Ref: payments.received_by > users.id
+Ref: scores.class_id > classes.id
+Ref: scores.subject_id > subjects.id
+Ref: scores.student_id > students.id
+Ref: sections.class_teacher_id > teachers.teacher_id
+Ref: sections.academic_year_id > academic_years.academic_year_id
+Ref: sections.class_id > classes.id
+Ref: student_fees.fee_type_id > fee_types.fee_type_id
+Ref: student_fees.enrollment_id > enrollments.enrollment_id
+Ref: student_guardians.guardian_id > guardians.guardian_id
+Ref: student_guardians.student_id > students.id
+Ref: students.user_id > users.id
+Ref: students.class_id > classes.id
+Ref: subjects.school_id > schools.id
+Ref: teacher_assignments.section_id > sections.section_id
+Ref: teacher_assignments.teacher_id > teachers.teacher_id
+Ref: teacher_assignments.subject_id > subjects.id
+Ref: teacher_class.subject_id > subjects.id
+Ref: teacher_class.class_id > classes.id
+Ref: teacher_class.teacher_id > users.id
+Ref: teachers.user_id > users.id
+Ref: terms.academic_year_id > academic_years.academic_year_id
+Ref: timetables.section_id > sections.section_id
+Ref: timetables.class_id > classes.id
+Ref: timetables.subject_id > subjects.id
+Ref: timetables.teacher_id > users.id
+Ref: users.role_id > roles.role_id
+Ref: users.school_id > schools.id
+
+Records schools(id, name, school_code, location) {
+  2, 'sala laor', 'BRANCH-001', 'Siem Reap'
+}
+
+Records users(id, name, email, role, active) {
+  1, 'Super Admin', 'superadmin@example.com', 'super-admin', 1
+  2, 'School Admin', 'admin@example.com', 'admin', 1
+  3, 'Teacher One', 'teacher@example.com', 'teacher', 1
+  4, 'Teacher Two', 'teacher2@example.com', 'teacher', 1
+  5, 'Student One', 'student@example.com', 'student', 1
+  6, 'Student Two', 'student2@example.com', 'student', 1
+}
+
+Records classes(id, name, grade_level, school_id) {
+  3, 'B1', 'Grade 9', 2
+  4, '12', '12', 2
+}
+
+Records subjects(id, name, school_id) {
+  14, 'Science', 2
+}
+
+Records students(id, user_id, class_id, student_code, status) {
+  3, 10, 3, null, 'Active'
+  4, 14, 4, 'BROSEUCHAMRE', 'Active'
+  5, 15, null, 'RABENLYATDIU', 'Active'
+  6, 16, null, 'RITHVORNGDAR', 'Active'
+  7, 17, null, 'RYSEREYMUTIT', 'Active'
+  8, 18, null, 'TOURCHIEINGA', 'Active'
+}
