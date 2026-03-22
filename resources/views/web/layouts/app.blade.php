@@ -16,10 +16,31 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Kantumruy+Pro:wght@400;500;600;700&family=Noto+Sans+Khmer:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        (function () {
+            var themeKey = 'sala_web_theme_v1';
+            var theme = 'light';
+
+            try {
+                var storedTheme = window.localStorage.getItem(themeKey);
+                if (storedTheme === 'dark' || storedTheme === 'light') {
+                    theme = storedTheme;
+                }
+            } catch (error) {
+                theme = 'light';
+            }
+
+            document.documentElement.setAttribute('data-theme', theme);
+            document.documentElement.style.colorScheme = theme;
+        })();
+    </script>
     <style>
         :root {
             --bg-page-1: #f6f1e6;
+            --bg-page-mid: #fff1df;
             --bg-page-2: #e9f2f4;
+            --bg-accent-1: rgba(219, 234, 254, 1);
+            --bg-accent-2: rgba(253, 230, 138, 1);
             --frame-bg: rgba(255, 255, 255, 0.94);
             --surface: #ffffff;
             --surface-soft: #f2f6f4;
@@ -34,6 +55,34 @@
             --danger: #e11d48;
             --shadow-lg: 0 26px 60px rgba(17, 47, 42, 0.18);
             --shadow-sm: 0 10px 22px rgba(22, 42, 38, 0.10);
+            --title-gradient: linear-gradient(120deg, #093730 0%, #0f766e 34%, #2b6cb0 67%, #0b4c45 100%);
+        }
+
+        html[data-theme="dark"] {
+            color-scheme: dark;
+        }
+
+        html[data-theme="dark"] {
+            --bg-page-1: #071412;
+            --bg-page-mid: #0d1719;
+            --bg-page-2: #0f1c23;
+            --bg-accent-1: rgba(59, 130, 246, 0.20);
+            --bg-accent-2: rgba(249, 115, 22, 0.16);
+            --frame-bg: rgba(8, 15, 17, 0.92);
+            --surface: #101b1d;
+            --surface-soft: #162427;
+            --line: #2a413d;
+            --text-main: #ebf5f0;
+            --text-muted: #9fb4ae;
+            --primary: #34d3c0;
+            --primary-2: #13998b;
+            --accent-blue: #60a5fa;
+            --accent-orange: #fb923c;
+            --accent-green: #4ade80;
+            --danger: #fb7185;
+            --shadow-lg: 0 26px 60px rgba(0, 0, 0, 0.38);
+            --shadow-sm: 0 10px 22px rgba(0, 0, 0, 0.22);
+            --title-gradient: linear-gradient(120deg, #9ff4eb 0%, #34d3c0 34%, #60a5fa 67%, #b7fff1 100%);
         }
 
         * {
@@ -46,9 +95,9 @@
             font-family: "Sora", "Kantumruy Pro", "Noto Sans Khmer", sans-serif;
             color: var(--text-main);
             background:
-                radial-gradient(900px 420px at -12% -18%, #dbeafe 0%, transparent 72%),
-                radial-gradient(980px 460px at 112% 115%, #fde68a 0%, transparent 70%),
-                linear-gradient(145deg, var(--bg-page-1) 0%, #fff1df 35%, var(--bg-page-2) 100%);
+                radial-gradient(900px 420px at -12% -18%, var(--bg-accent-1) 0%, transparent 72%),
+                radial-gradient(980px 460px at 112% 115%, var(--bg-accent-2) 0%, transparent 70%),
+                linear-gradient(145deg, var(--bg-page-1) 0%, var(--bg-page-mid) 35%, var(--bg-page-2) 100%);
         }
 
         body.sidebar-mobile-lock {
@@ -448,6 +497,44 @@
             gap: 10px;
             flex-wrap: wrap;
             justify-content: flex-end;
+        }
+
+        .theme-switch {
+            display: inline-grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 4px;
+            padding: 4px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: var(--surface);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .theme-option {
+            min-width: 76px;
+            min-height: 36px;
+            padding: 8px 10px;
+            border: none;
+            border-radius: 9px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 800;
+            box-shadow: none;
+        }
+
+        .theme-option:hover {
+            transform: none;
+            box-shadow: none;
+            background: var(--surface-soft);
+            color: var(--primary-2);
+        }
+
+        .theme-option.active,
+        .theme-option.active:hover {
+            background: linear-gradient(135deg, var(--primary), var(--primary-2));
+            color: #fff;
+            box-shadow: 0 10px 18px rgba(12, 80, 72, 0.22);
         }
 
         .role-pill {
@@ -1433,7 +1520,7 @@
         }
 
         .dashboard-motion .title {
-            background: linear-gradient(120deg, #093730 0%, #0f766e 34%, #2b6cb0 67%, #0b4c45 100%);
+            background: var(--title-gradient);
             background-size: 220% 100%;
             -webkit-background-clip: text;
             background-clip: text;
@@ -1572,6 +1659,125 @@
         @keyframes dash-blob {
             0%, 100% { transform: translate3d(0, 0, 0); }
             50% { transform: translate3d(0, -16px, 0); }
+        }
+
+        html[data-theme="dark"] .global-sidebar {
+            background: linear-gradient(180deg, #0d1719 0%, #132124 100%);
+            border-right-color: var(--line);
+        }
+
+        html[data-theme="dark"] .global-sidebar h3,
+        html[data-theme="dark"] .sidebar-links a,
+        html[data-theme="dark"] .nav-icon,
+        html[data-theme="dark"] .workflow-title,
+        html[data-theme="dark"] .card .value,
+        html[data-theme="dark"] .panel-head,
+        html[data-theme="dark"] table.score-matrix th,
+        html[data-theme="dark"] table.score-matrix td.score-matrix-student strong {
+            color: var(--text-main);
+        }
+
+        html[data-theme="dark"] .global-head,
+        html[data-theme="dark"] .workflow-link,
+        html[data-theme="dark"] .user-chip,
+        html[data-theme="dark"] .head-link,
+        html[data-theme="dark"] .nav a,
+        html[data-theme="dark"] .card,
+        html[data-theme="dark"] .panel,
+        html[data-theme="dark"] input,
+        html[data-theme="dark"] select,
+        html[data-theme="dark"] textarea,
+        html[data-theme="dark"] .upload-zone,
+        html[data-theme="dark"] .module-link,
+        html[data-theme="dark"] .quick-actions a,
+        html[data-theme="dark"] .top-item,
+        html[data-theme="dark"] .mini-actions a,
+        html[data-theme="dark"] .locale-inline-form select,
+        html[data-theme="dark"] .school-standard-pill,
+        html[data-theme="dark"] .sidebar-toggle,
+        html[data-theme="dark"] table.score-matrix th,
+        html[data-theme="dark"] table.score-matrix td,
+        html[data-theme="dark"] .score-matrix-wrap,
+        html[data-theme="dark"] .avatar-preview,
+        html[data-theme="dark"] .avatar-xs,
+        html[data-theme="dark"] .avatar-list,
+        html[data-theme="dark"] .upload-hints span {
+            background: var(--surface);
+            color: var(--text-main);
+            border-color: var(--line);
+        }
+
+        html[data-theme="dark"] .global-head,
+        html[data-theme="dark"] .panel,
+        html[data-theme="dark"] .card,
+        html[data-theme="dark"] .workflow-link,
+        html[data-theme="dark"] .theme-switch {
+            box-shadow: var(--shadow-sm);
+        }
+
+        html[data-theme="dark"] .school-standard-strip {
+            background: linear-gradient(100deg, rgba(16, 27, 29, 0.96) 0%, rgba(24, 35, 38, 0.94) 56%, rgba(13, 24, 26, 0.96) 100%);
+            border-color: var(--line);
+        }
+
+        html[data-theme="dark"] .role-pill {
+            border-color: rgba(74, 222, 128, 0.24);
+            background: rgba(17, 61, 44, 0.72);
+            color: #d8ffe6;
+        }
+
+        html[data-theme="dark"] .panel-head {
+            background: linear-gradient(120deg, rgba(16, 27, 29, 1) 0%, rgba(22, 36, 39, 1) 100%);
+            border-bottom-color: var(--line);
+        }
+
+        html[data-theme="dark"] tbody tr:nth-child(even) {
+            background: #132022;
+        }
+
+        html[data-theme="dark"] tbody tr:hover,
+        html[data-theme="dark"] .workflow-link:hover,
+        html[data-theme="dark"] .module-link:hover,
+        html[data-theme="dark"] .quick-actions a:hover,
+        html[data-theme="dark"] .mini-actions a:hover,
+        html[data-theme="dark"] .sidebar-toggle:hover,
+        html[data-theme="dark"] .head-link:hover,
+        html[data-theme="dark"] .nav a:hover,
+        html[data-theme="dark"] .sidebar-links a:hover {
+            background: var(--surface-soft);
+            border-color: #3b5a55;
+            color: var(--primary);
+        }
+
+        html[data-theme="dark"] .sidebar-links a.active,
+        html[data-theme="dark"] .workflow-link.active,
+        html[data-theme="dark"] .nav a.active,
+        html[data-theme="dark"] .theme-option.active,
+        html[data-theme="dark"] .theme-option.active:hover {
+            color: #031313;
+        }
+
+        html[data-theme="dark"] .school-standard-date,
+        html[data-theme="dark"] .text-muted,
+        html[data-theme="dark"] .subtitle,
+        html[data-theme="dark"] .workflow-desc,
+        html[data-theme="dark"] .card .label,
+        html[data-theme="dark"] label,
+        html[data-theme="dark"] .upload-meta,
+        html[data-theme="dark"] .upload-note,
+        html[data-theme="dark"] .upload-hints span,
+        html[data-theme="dark"] .user-chip .email {
+            color: var(--text-muted);
+        }
+
+        html[data-theme="dark"] .bar-track {
+            background: #203034;
+        }
+
+        html[data-theme="dark"] .rt-toast {
+            background: #0f2022;
+            border-color: rgba(130, 187, 178, 0.20);
+            box-shadow: 0 14px 30px rgba(0, 0, 0, .35);
         }
 
         .app-frame.sidebar-collapsed .workspace-shell {
@@ -1744,6 +1950,7 @@
 
             .role-pill,
             .head-link,
+            .theme-switch,
             .locale-inline-form,
             .logout {
                 width: 100%;
@@ -1752,6 +1959,10 @@
 
             .locale-inline-form select {
                 width: 100%;
+            }
+
+            .theme-switch {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
             .topbar {
@@ -2090,6 +2301,10 @@
                             </div>
 
                             <div class="head-tools">
+                                <div class="theme-switch" role="group" aria-label="Theme switch">
+                                    <button type="button" class="theme-option" data-theme-option="light">Light</button>
+                                    <button type="button" class="theme-option" data-theme-option="dark">Dark</button>
+                                </div>
                                 <form method="POST" action="{{ route('locale.switch') }}" class="locale-inline-form">
                                     @csrf
                                     <select name="locale" onchange="this.form.submit()">
@@ -2208,6 +2423,35 @@
     <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            var themeStorageKey = 'sala_web_theme_v1';
+            var themeButtons = Array.prototype.slice.call(document.querySelectorAll('[data-theme-option]'));
+            var applyTheme = function (theme) {
+                var nextTheme = theme === 'dark' ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-theme', nextTheme);
+                document.documentElement.style.colorScheme = nextTheme;
+
+                themeButtons.forEach(function (button) {
+                    var isActive = button.getAttribute('data-theme-option') === nextTheme;
+                    button.classList.toggle('active', isActive);
+                    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+                });
+
+                try {
+                    window.localStorage.setItem(themeStorageKey, nextTheme);
+                } catch (error) {
+                    // Ignore localStorage failures.
+                }
+            };
+
+            var initialTheme = document.documentElement.getAttribute('data-theme') || 'light';
+            applyTheme(initialTheme);
+
+            themeButtons.forEach(function (button) {
+                button.addEventListener('click', function () {
+                    applyTheme(button.getAttribute('data-theme-option'));
+                });
+            });
+
             var navSearchInput = document.getElementById('sidebar-filter-input');
             var sidebar = document.getElementById('sidebar-nav');
             var navItems = [];

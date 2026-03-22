@@ -3,13 +3,14 @@
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Models\LoginLinkToken;
 use App\Models\User;
 use App\Notifications\WebMagicLoginLinkNotification;
 use App\Support\WebPanelSession;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
@@ -21,10 +22,11 @@ use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class AuthController extends Controller
 {
-    public function showLogin(): View
+    public function showLogin(Request $request): View
     {
         return view('web.auth.login', [
-            'showMagicLinkPreview' => $this->shouldExposeMagicLinkPreview(),
+            'showMagicLinkPreview' => $this->shouldExposeMagicLinkPreview($request),
+            'showLogMailerNotice' => $this->shouldShowLogMailerNotice($request),
         ]);
     }
 
@@ -70,7 +72,7 @@ class AuthController extends Controller
 
             $response = back()->with('status', 'If that account exists, we sent a sign-in link to its email address.');
 
-            if ($this->shouldExposeMagicLinkPreview()) {
+            if ($this->shouldExposeMagicLinkPreview($request)) {
                 $response->with('debug_magic_login_url', $magicLoginUrl)
                     ->with('debug_magic_login_path', $this->relativePathFromUrl($magicLoginUrl))
                     ->with('debug_magic_login_email', $user->email);
@@ -84,13 +86,13 @@ class AuthController extends Controller
 
     public function magicLogin(Request $request, int $id, string $token): View|RedirectResponse
     {
-        $user = $this->validateMagicLinkOrRedirect($id, $token);
-        if ($user instanceof RedirectResponse) {
-            return $user;
+        $validated = $this->validateMagicLinkOrRedirect($id, $token);
+        if ($validated instanceof RedirectResponse) {
+            return $validated;
         }
 
         return view('web.auth.magic-login', [
-            'user' => $user,
+            'user' => $validated['user'],
             'consumeUrl' => $request->getRequestUri(),
             'expiresAt' => $this->expiresAtFromRequest($request),
         ]);
@@ -98,18 +100,38 @@ class AuthController extends Controller
 
     public function consumeMagicLogin(Request $request, int $id, string $token, WebPanelSession $session): RedirectResponse
     {
-        $user = $this->validateMagicLinkOrRedirect($id, $token);
-        if ($user instanceof RedirectResponse) {
-            return $user;
+        $validated = $this->validateMagicLinkOrRedirect($id, $token);
+        if ($validated instanceof RedirectResponse) {
+            return $validated;
         }
 
-        $cacheKey = $this->magicLinkCacheKey($user->id, $token);
+        $user = $validated['user'];
+
+        $wasConsumed = DB::transaction(function () use ($user, $token): bool {
+            $loginLinkToken = $this->activeLoginLinkTokenQuery($user->id, $token, 'web')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $loginLinkToken instanceof LoginLinkToken) {
+                return false;
+            }
+
+            $loginLinkToken->forceFill([
+                'consumed_at' => now(),
+            ])->save();
+
+            return true;
+        });
+
+        if (! $wasConsumed) {
+            return redirect()->away(route('login', [], false))
+                ->withErrors(['login' => ['This sign-in link is invalid or has already been used.']]);
+        }
 
         if (! $user->hasVerifiedEmail()) {
             $user->markEmailAsVerified();
         }
 
-        Cache::forget($cacheKey);
         $session->login($request, $user);
 
         return redirect()->away($this->resolveIntendedPath($request));
@@ -185,12 +207,20 @@ class AuthController extends Controller
     {
         $token = Str::random(64);
         $expiresInMinutes = 15;
-        $cacheKey = $this->magicLinkCacheKey($user->id, $token);
-        Cache::put($cacheKey, $token, now()->addMinutes($expiresInMinutes));
+        $expiresAt = now()->addMinutes($expiresInMinutes);
+
+        $this->deleteStaleLoginLinkTokens($user->id, 'web');
+
+        LoginLinkToken::query()->create([
+            'user_id' => $user->id,
+            'channel' => 'web',
+            'token_hash' => hash('sha256', $token),
+            'expires_at' => $expiresAt,
+        ]);
 
         $url = $this->signedWebUrl(
             'login.magic',
-            now()->addMinutes($expiresInMinutes),
+            $expiresAt,
             [
                 'id' => $user->id,
                 'token' => $token,
@@ -202,18 +232,15 @@ class AuthController extends Controller
         return $url;
     }
 
-    private function magicLinkCacheKey(int $userId, string $token): string
-    {
-        return 'web-magic-login:'.$userId.':'.hash('sha256', $token);
-    }
-
-    private function validateMagicLinkOrRedirect(int $id, string $token): User|RedirectResponse
+    /**
+     * @return array{user: User, loginLinkToken: LoginLinkToken}|RedirectResponse
+     */
+    private function validateMagicLinkOrRedirect(int $id, string $token): array|RedirectResponse
     {
         $user = User::query()->findOrFail($id);
-        $cacheKey = $this->magicLinkCacheKey($user->id, $token);
-        $storedToken = Cache::get($cacheKey);
+        $loginLinkToken = $this->activeLoginLinkTokenQuery($user->id, $token, 'web')->first();
 
-        if (! is_string($storedToken) || ! hash_equals($storedToken, $token)) {
+        if (! $loginLinkToken instanceof LoginLinkToken) {
             return redirect()->away(route('login', [], false))
                 ->withErrors(['login' => ['This sign-in link is invalid or has already been used.']]);
         }
@@ -223,7 +250,33 @@ class AuthController extends Controller
                 ->withErrors(['login' => ['This account is inactive.']]);
         }
 
-        return $user;
+        return [
+            'user' => $user,
+            'loginLinkToken' => $loginLinkToken,
+        ];
+    }
+
+    private function activeLoginLinkTokenQuery(int $userId, string $token, string $channel)
+    {
+        return LoginLinkToken::query()
+            ->where('user_id', $userId)
+            ->where('channel', $channel)
+            ->where('token_hash', hash('sha256', $token))
+            ->whereNull('consumed_at')
+            ->where('expires_at', '>', now())
+            ->latest('id');
+    }
+
+    private function deleteStaleLoginLinkTokens(int $userId, string $channel): void
+    {
+        LoginLinkToken::query()
+            ->where('user_id', $userId)
+            ->where('channel', $channel)
+            ->where(function ($query): void {
+                $query->where('expires_at', '<=', now())
+                    ->orWhereNotNull('consumed_at');
+            })
+            ->delete();
     }
 
     private function expiresAtFromRequest(Request $request): ?string
@@ -274,9 +327,42 @@ class AuthController extends Controller
         return $base.$separator.http_build_query($query);
     }
 
-    private function shouldExposeMagicLinkPreview(): bool
+    private function shouldExposeMagicLinkPreview(?Request $request = null): bool
     {
-        return app()->environment('testing');
+        if (app()->environment('testing')) {
+            return true;
+        }
+
+        if (! app()->environment('local')) {
+            return false;
+        }
+
+        if ((string) config('mail.default') !== 'log') {
+            return false;
+        }
+
+        return $this->isTrustedLocalPreviewHost($request);
+    }
+
+    private function shouldShowLogMailerNotice(?Request $request = null): bool
+    {
+        return app()->environment('local')
+            && (string) config('mail.default') === 'log'
+            && ! $this->shouldExposeMagicLinkPreview($request);
+    }
+
+    private function isTrustedLocalPreviewHost(?Request $request = null): bool
+    {
+        $host = Str::lower(trim((string) ($request?->getHost() ?? '')));
+        if ($host === '') {
+            return false;
+        }
+
+        if (in_array($host, ['localhost', '127.0.0.1', '::1', 'school-api.test'], true)) {
+            return true;
+        }
+
+        return str_ends_with($host, '.test');
     }
 
     private function relativePathFromUrl(string $url): string

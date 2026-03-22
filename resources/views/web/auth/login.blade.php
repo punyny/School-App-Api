@@ -9,10 +9,31 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Kantumruy+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        (function () {
+            var themeKey = 'sala_web_theme_v1';
+            var theme = 'light';
+
+            try {
+                var storedTheme = window.localStorage.getItem(themeKey);
+                if (storedTheme === 'dark' || storedTheme === 'light') {
+                    theme = storedTheme;
+                }
+            } catch (error) {
+                theme = 'light';
+            }
+
+            document.documentElement.setAttribute('data-theme', theme);
+            document.documentElement.style.colorScheme = theme;
+        })();
+    </script>
     <style>
         :root {
             --bg-1: #f6f1e6;
+            --bg-mid: #fff3e5;
             --bg-2: #e9f2f4;
+            --bg-accent-1: rgba(219, 234, 254, 1);
+            --bg-accent-2: rgba(253, 230, 138, 1);
             --surface: rgba(255, 255, 255, 0.92);
             --surface-soft: rgba(255, 255, 255, 0.72);
             --line: rgba(15, 118, 110, 0.14);
@@ -28,6 +49,28 @@
             --shadow-sm: 0 14px 30px rgba(15, 23, 42, 0.08);
         }
 
+        html[data-theme="dark"] {
+            color-scheme: dark;
+            --bg-1: #071412;
+            --bg-mid: #0d1719;
+            --bg-2: #0f1c23;
+            --bg-accent-1: rgba(59, 130, 246, 0.18);
+            --bg-accent-2: rgba(249, 115, 22, 0.14);
+            --surface: rgba(10, 18, 20, 0.92);
+            --surface-soft: rgba(15, 26, 28, 0.78);
+            --line: rgba(58, 86, 81, 0.62);
+            --text-main: #ebf5f0;
+            --text-muted: #9fb4ae;
+            --primary: #34d3c0;
+            --primary-2: #13998b;
+            --accent-blue: #60a5fa;
+            --accent-orange: #fb923c;
+            --danger: #fb7185;
+            --success: #4ade80;
+            --shadow-lg: 0 30px 60px rgba(0, 0, 0, 0.34);
+            --shadow-sm: 0 14px 30px rgba(0, 0, 0, 0.18);
+        }
+
         * {
             box-sizing: border-box;
         }
@@ -38,9 +81,9 @@
             font-family: "Sora", "Kantumruy Pro", sans-serif;
             color: var(--text-main);
             background:
-                radial-gradient(880px 420px at -10% -12%, #dbeafe 0%, transparent 70%),
-                radial-gradient(860px 420px at 110% 110%, #fde68a 0%, transparent 68%),
-                linear-gradient(140deg, var(--bg-1) 0%, #fff3e5 40%, var(--bg-2) 100%);
+                radial-gradient(880px 420px at -10% -12%, var(--bg-accent-1) 0%, transparent 70%),
+                radial-gradient(860px 420px at 110% 110%, var(--bg-accent-2) 0%, transparent 68%),
+                linear-gradient(140deg, var(--bg-1) 0%, var(--bg-mid) 40%, var(--bg-2) 100%);
         }
 
         body.locale-km {
@@ -56,11 +99,20 @@
             align-items: center;
         }
 
-        .locale-form {
+        .top-controls {
             position: fixed;
             top: 18px;
             right: 18px;
             z-index: 20;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .locale-form {
+            position: static;
         }
 
         .locale-form select {
@@ -74,6 +126,46 @@
             outline: none;
             box-shadow: var(--shadow-sm);
             cursor: pointer;
+        }
+
+        .theme-switch {
+            display: inline-grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 4px;
+            padding: 4px;
+            border: 1px solid rgba(15, 118, 110, 0.14);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.92);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .theme-option {
+            min-width: 74px;
+            border: none;
+            border-radius: 999px;
+            background: transparent;
+            color: var(--text-muted);
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 800;
+            font-family: inherit;
+            cursor: pointer;
+            transition: .18s ease;
+            box-shadow: none;
+        }
+
+        .theme-option:hover {
+            transform: none;
+            box-shadow: none;
+            background: var(--surface-soft);
+            color: var(--primary-2);
+        }
+
+        .theme-option.active,
+        .theme-option.active:hover {
+            background: linear-gradient(135deg, var(--primary), var(--primary-2));
+            color: #fff;
+            box-shadow: 0 10px 18px rgba(12, 80, 72, 0.22);
         }
 
         .login-shell {
@@ -479,6 +571,59 @@
             border: 0;
         }
 
+        html[data-theme="dark"] .theme-switch,
+        html[data-theme="dark"] .locale-form select,
+        html[data-theme="dark"] .brand-chip,
+        html[data-theme="dark"] .brand-step,
+        html[data-theme="dark"] .login-card,
+        html[data-theme="dark"] .field input,
+        html[data-theme="dark"] .meta-row,
+        html[data-theme="dark"] .feedback-preview {
+            background: var(--surface);
+            color: var(--text-main);
+            border-color: var(--line);
+        }
+
+        html[data-theme="dark"] .login-brand {
+            background:
+                radial-gradient(circle at top right, rgba(96, 165, 250, 0.18), transparent 34%),
+                linear-gradient(150deg, rgba(10, 18, 20, 0.90), rgba(15, 26, 28, 0.78));
+            border-color: rgba(62, 97, 90, 0.36);
+        }
+
+        html[data-theme="dark"] .brand-step,
+        html[data-theme="dark"] .meta-row,
+        html[data-theme="dark"] .feedback-success,
+        html[data-theme="dark"] .feedback-error {
+            border-color: var(--line);
+        }
+
+        html[data-theme="dark"] .field label,
+        html[data-theme="dark"] .brand-step strong,
+        html[data-theme="dark"] .meta-row strong {
+            color: var(--text-main);
+        }
+
+        html[data-theme="dark"] .field-shell svg {
+            fill: #93b3ab;
+        }
+
+        html[data-theme="dark"] .field input::placeholder,
+        html[data-theme="dark"] .meta-row p,
+        html[data-theme="dark"] .brand-copy,
+        html[data-theme="dark"] .brand-step p,
+        html[data-theme="dark"] .login-card p {
+            color: var(--text-muted);
+        }
+
+        html[data-theme="dark"] .feedback-success {
+            background: rgba(20, 83, 45, 0.38);
+        }
+
+        html[data-theme="dark"] .feedback-error {
+            background: rgba(127, 29, 29, 0.30);
+        }
+
         @media (max-width: 980px) {
             .page-shell {
                 padding: 20px 14px;
@@ -512,22 +657,37 @@
             }
 
             .locale-form {
+                width: 100%;
+            }
+
+            .top-controls {
                 top: 12px;
                 right: 12px;
+                left: 12px;
+            }
+
+            .theme-switch {
+                width: 100%;
             }
         }
     </style>
 </head>
 <body class="locale-{{ app()->getLocale() === 'km' ? 'km' : 'en' }}">
-    <div class="locale-form">
-        <form id="login-locale-form" method="POST" action="{{ route('locale.switch') }}">
-            @csrf
-            <input type="hidden" name="locale" id="login-locale-value" value="{{ app()->getLocale() }}">
-            <select id="locale-switch" onchange="document.getElementById('login-locale-value').value=this.value; document.getElementById('login-locale-form').submit()">
-                <option value="en" {{ app()->getLocale() === 'en' ? 'selected' : '' }}>EN</option>
-                <option value="km" {{ app()->getLocale() === 'km' ? 'selected' : '' }}>KM</option>
-            </select>
-        </form>
+    <div class="top-controls">
+        <div class="theme-switch" role="group" aria-label="Theme switch">
+            <button type="button" class="theme-option" data-theme-option="light">Light</button>
+            <button type="button" class="theme-option" data-theme-option="dark">Dark</button>
+        </div>
+        <div class="locale-form">
+            <form id="login-locale-form" method="POST" action="{{ route('locale.switch', [], false) }}">
+                @csrf
+                <input type="hidden" name="locale" id="login-locale-value" value="{{ app()->getLocale() }}">
+                <select id="locale-switch" onchange="document.getElementById('login-locale-value').value=this.value; document.getElementById('login-locale-form').submit()">
+                    <option value="en" {{ app()->getLocale() === 'en' ? 'selected' : '' }}>EN</option>
+                    <option value="km" {{ app()->getLocale() === 'km' ? 'selected' : '' }}>KM</option>
+                </select>
+            </form>
+        </div>
     </div>
 
     <main class="page-shell">
@@ -571,7 +731,7 @@
                     </div>
                 </div>
 
-                <form method="POST" action="{{ route('login.submit') }}" class="login-form">
+                <form method="POST" action="{{ route('login.submit', [], false) }}" class="login-form">
                     @csrf
 
                     @if (session('success'))
@@ -580,6 +740,13 @@
 
                     @if (session('status'))
                         <div class="feedback feedback-success">{{ session('status') }}</div>
+                    @endif
+
+                    @if (!session('debug_magic_login_url') && $showLogMailerNotice)
+                        <div class="feedback feedback-preview">
+                            <div><strong>Local mail mode</strong></div>
+                            <div>This local workspace writes login emails to <code>storage/logs/laravel.log</code>.</div>
+                        </div>
                     @endif
 
                     @if ($showMagicLinkPreview && session('debug_magic_login_url'))
@@ -634,5 +801,36 @@
             </section>
         </section>
     </main>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var themeStorageKey = 'sala_web_theme_v1';
+            var themeButtons = Array.prototype.slice.call(document.querySelectorAll('[data-theme-option]'));
+            var applyTheme = function (theme) {
+                var nextTheme = theme === 'dark' ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-theme', nextTheme);
+                document.documentElement.style.colorScheme = nextTheme;
+
+                themeButtons.forEach(function (button) {
+                    var isActive = button.getAttribute('data-theme-option') === nextTheme;
+                    button.classList.toggle('active', isActive);
+                    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+                });
+
+                try {
+                    window.localStorage.setItem(themeStorageKey, nextTheme);
+                } catch (error) {
+                    // Ignore localStorage failures.
+                }
+            };
+
+            applyTheme(document.documentElement.getAttribute('data-theme') || 'light');
+
+            themeButtons.forEach(function (button) {
+                button.addEventListener('click', function () {
+                    applyTheme(button.getAttribute('data-theme-option'));
+                });
+            });
+        });
+    </script>
 </body>
 </html>

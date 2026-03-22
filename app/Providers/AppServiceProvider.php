@@ -50,15 +50,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $appUrl = trim((string) config('app.url'));
-        if ($appUrl !== '') {
-            URL::forceRootUrl($appUrl);
-
-            if (str_starts_with($appUrl, 'https://')) {
-                URL::forceScheme('https');
-            }
-        }
-
         VerifyEmail::createUrlUsing(function (User $notifiable): string {
             $rootUrl = rtrim((string) config('app.url'), '/');
 

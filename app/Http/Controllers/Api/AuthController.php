@@ -5,12 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\ChangePasswordRequest;
 use App\Http\Requests\Api\LoginRequest;
+use App\Models\LoginLinkToken;
 use App\Models\User;
 use App\Notifications\MobileMagicLoginLinkNotification;
 use App\Support\ProfileImageStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -136,10 +137,25 @@ class AuthController extends Controller
             ], 403);
         }
 
-        $cacheKey = $this->magicLinkCacheKey($user->id, (string) $payload['token'], 'mobile');
-        $storedToken = Cache::get($cacheKey);
+        $isConsumed = DB::transaction(function () use ($user, $payload): bool {
+            $loginLinkToken = $this->activeLoginLinkTokenQuery(
+                $user->id,
+                (string) $payload['token'],
+                'mobile'
+            )->lockForUpdate()->first();
 
-        if (! is_string($storedToken) || ! hash_equals($storedToken, (string) $payload['token'])) {
+            if (! $loginLinkToken instanceof LoginLinkToken) {
+                return false;
+            }
+
+            $loginLinkToken->forceFill([
+                'consumed_at' => now(),
+            ])->save();
+
+            return true;
+        });
+
+        if (! $isConsumed) {
             return response()->json([
                 'message' => 'This sign-in link is invalid or has already been used.',
             ], 422);
@@ -155,7 +171,6 @@ class AuthController extends Controller
             $user->markEmailAsVerified();
         }
 
-        Cache::forget($cacheKey);
         $user->forceFill([
             'last_login' => now(),
         ])->save();
@@ -308,21 +323,29 @@ class AuthController extends Controller
         $mobileToken = Str::random(64);
         $webToken = Str::random(64);
         $expiresInMinutes = self::MOBILE_MAGIC_LINK_EXPIRY_MINUTES;
-        Cache::put(
-            $this->magicLinkCacheKey($user->id, $mobileToken, 'mobile'),
-            $mobileToken,
-            now()->addMinutes($expiresInMinutes)
-        );
-        Cache::put(
-            $this->magicLinkCacheKey($user->id, $webToken, 'web'),
-            $webToken,
-            now()->addMinutes($expiresInMinutes)
-        );
+        $expiresAt = now()->addMinutes($expiresInMinutes);
+
+        $this->deleteStaleLoginLinkTokens($user->id, 'mobile');
+        $this->deleteStaleLoginLinkTokens($user->id, 'web');
+
+        LoginLinkToken::query()->create([
+            'user_id' => $user->id,
+            'channel' => 'mobile',
+            'token_hash' => hash('sha256', $mobileToken),
+            'expires_at' => $expiresAt,
+        ]);
+
+        LoginLinkToken::query()->create([
+            'user_id' => $user->id,
+            'channel' => 'web',
+            'token_hash' => hash('sha256', $webToken),
+            'expires_at' => $expiresAt,
+        ]);
 
         $mobileUrl = $this->mobileMagicLinkUrl($user, $mobileToken, $deviceName);
         $fallbackWebUrl = $this->signedWebUrl(
             'login.magic',
-            now()->addMinutes($expiresInMinutes),
+            $expiresAt,
             [
                 'id' => $user->id,
                 'token' => $webToken,
@@ -330,7 +353,7 @@ class AuthController extends Controller
         );
         $bridgeUrl = $this->signedWebUrl(
             'login.mobile',
-            now()->addMinutes($expiresInMinutes),
+            $expiresAt,
             [
                 'id' => $user->id,
                 'token' => $mobileToken,
@@ -364,9 +387,27 @@ class AuthController extends Controller
         return $base.$separator.http_build_query($query);
     }
 
-    private function magicLinkCacheKey(int $userId, string $token, string $context): string
+    private function activeLoginLinkTokenQuery(int $userId, string $token, string $channel)
     {
-        return $context.'-magic-login:'.$userId.':'.hash('sha256', $token);
+        return LoginLinkToken::query()
+            ->where('user_id', $userId)
+            ->where('channel', $channel)
+            ->where('token_hash', hash('sha256', $token))
+            ->whereNull('consumed_at')
+            ->where('expires_at', '>', now())
+            ->latest('id');
+    }
+
+    private function deleteStaleLoginLinkTokens(int $userId, string $channel): void
+    {
+        LoginLinkToken::query()
+            ->where('user_id', $userId)
+            ->where('channel', $channel)
+            ->where(function ($query): void {
+                $query->where('expires_at', '<=', now())
+                    ->orWhereNotNull('consumed_at');
+            })
+            ->delete();
     }
 
     /**

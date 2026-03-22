@@ -2,12 +2,12 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\LoginLinkToken;
 use App\Models\User;
 use App\Notifications\MobileMagicLoginLinkNotification;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
@@ -85,7 +85,8 @@ class AuthApiTest extends TestCase
             [
                 'id' => $teacher->id,
                 'hash' => sha1((string) $teacher->getEmailForVerification()),
-            ]
+            ],
+            false
         );
 
         $this->get($verificationUrl)->assertRedirect('/dashboard');
@@ -238,8 +239,12 @@ class AuthApiTest extends TestCase
 
         $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
         $token = str_repeat('a', 64);
-        $cacheKey = 'mobile-magic-login:'.$teacher->id.':'.hash('sha256', $token);
-        Cache::put($cacheKey, $token, now()->addMinutes(15));
+        $loginLinkToken = LoginLinkToken::query()->create([
+            'user_id' => $teacher->id,
+            'channel' => 'mobile',
+            'token_hash' => hash('sha256', $token),
+            'expires_at' => now()->addMinutes(15),
+        ]);
 
         $response = $this->postJson('/api/auth/magic-link/verify', [
             'id' => $teacher->id,
@@ -257,7 +262,7 @@ class AuthApiTest extends TestCase
             ->assertJsonPath('message', 'Magic link verified successfully.')
             ->assertJsonPath('user.email', 'teacher@example.com');
 
-        $this->assertNull(Cache::get($cacheKey));
+        $this->assertNotNull($loginLinkToken->fresh()?->consumed_at);
     }
 
     public function test_user_can_update_own_profile_with_image_upload(): void

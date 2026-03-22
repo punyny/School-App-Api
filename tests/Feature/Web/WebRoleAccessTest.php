@@ -10,6 +10,7 @@ use App\Notifications\WebMagicLoginLinkNotification;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
@@ -100,6 +101,42 @@ class WebRoleAccessTest extends TestCase
         $consumeResponse->assertRedirect('/dashboard');
         $this->assertAuthenticatedAs($teacher->fresh());
         $this->assertNotNull($teacher->fresh()->email_verified_at);
+    }
+
+    public function test_magic_link_stays_valid_even_if_cache_is_cleared(): void
+    {
+        Notification::fake();
+        $this->seed();
+        config(['app.url' => 'https://example.test']);
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $teacher->forceFill(['email_verified_at' => null])->save();
+
+        $this->from('/login')->post('/login', [
+            'login' => 'teacher@example.com',
+        ])->assertRedirect('/login');
+
+        $notification = null;
+        Notification::assertSentTo($teacher, WebMagicLoginLinkNotification::class, function (WebMagicLoginLinkNotification $sent) use (&$notification): bool {
+            $notification = $sent;
+
+            return true;
+        });
+
+        $this->assertInstanceOf(WebMagicLoginLinkNotification::class, $notification);
+
+        $relativeLoginUrl = parse_url($notification->loginUrl(), PHP_URL_PATH);
+        $relativeLoginQuery = parse_url($notification->loginUrl(), PHP_URL_QUERY);
+        $requestUrl = $relativeLoginUrl.(is_string($relativeLoginQuery) && $relativeLoginQuery !== '' ? '?'.$relativeLoginQuery : '');
+
+        Artisan::call('cache:clear');
+
+        $this->get($requestUrl)
+            ->assertOk()
+            ->assertSee('Continue sign in');
+
+        $this->post($requestUrl)->assertRedirect('/dashboard');
+        $this->assertAuthenticatedAs($teacher->fresh());
     }
 
     public function test_mobile_magic_link_bridge_page_can_render(): void
