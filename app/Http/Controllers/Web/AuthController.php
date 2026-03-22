@@ -24,7 +24,6 @@ class AuthController extends Controller
     public function showLogin(): View
     {
         return view('web.auth.login', [
-            'demoAccounts' => $this->demoAccounts(),
             'showMagicLinkPreview' => $this->shouldExposeMagicLinkPreview(),
         ]);
     }
@@ -275,27 +274,9 @@ class AuthController extends Controller
         return $base.$separator.http_build_query($query);
     }
 
-    /**
-     * @return array<int, array{role:string,email:string}>
-     */
-    private function demoAccounts(): array
-    {
-        if (! $this->shouldExposeMagicLinkPreview()) {
-            return [];
-        }
-
-        return [
-            ['role' => 'Super Admin', 'email' => 'superadmin@example.com'],
-            ['role' => 'Admin', 'email' => 'admin@example.com'],
-            ['role' => 'Teacher', 'email' => 'teacher@example.com'],
-            ['role' => 'Student', 'email' => 'student@example.com'],
-            ['role' => 'Parent', 'email' => 'parent@example.com'],
-        ];
-    }
-
     private function shouldExposeMagicLinkPreview(): bool
     {
-        return app()->environment(['local', 'testing']) || (bool) config('app.debug');
+        return app()->environment('testing');
     }
 
     private function relativePathFromUrl(string $url): string

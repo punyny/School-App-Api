@@ -540,41 +540,19 @@
                 <h2 class="brand-title">{{ __('ui.login.portal_login') }}</h2>
                 <p class="brand-copy">{{ __('ui.login.portal_text') }}</p>
 
-                <div class="brand-grid">
-                    <div class="brand-stat">
-                        <strong>1</strong>
-                        <span>Secure sign-in link</span>
-                    </div>
-                    <div class="brand-stat">
-                        <strong>3</strong>
-                        <span>Teacher, Student, Parent</span>
-                    </div>
-                    <div class="brand-stat">
-                        <strong>15m</strong>
-                        <span>Magic link validity</span>
-                    </div>
-                </div>
-
                 <div class="brand-steps">
                     <div class="brand-step">
-                        <span class="brand-step-index">01</span>
+                        <span class="brand-step-index">WEB</span>
                         <div>
-                            <strong>Enter your school account</strong>
-                            <p>Use your school email or username to request a secure sign-in link.</p>
+                            <strong>{{ __('ui.login.web_access_title') }}</strong>
+                            <p>{{ __('ui.login.web_access_text') }}</p>
                         </div>
                     </div>
                     <div class="brand-step">
-                        <span class="brand-step-index">02</span>
+                        <span class="brand-step-index">SEC</span>
                         <div>
-                            <strong>Open the link from email</strong>
-                            <p>The system sends a one-time login link to the email address connected to your account.</p>
-                        </div>
-                    </div>
-                    <div class="brand-step">
-                        <span class="brand-step-index">03</span>
-                        <div>
-                            <strong>Go straight to your dashboard</strong>
-                            <p>You will be redirected to the correct dashboard based on your role automatically.</p>
+                            <strong>{{ __('ui.login.secure_email_title') }}</strong>
+                            <p>{{ __('ui.login.secure_email_text') }}</p>
                         </div>
                     </div>
                 </div>
@@ -589,7 +567,7 @@
                     </div>
                     <div>
                         <h1>{{ __('ui.login.portal_login') }}</h1>
-                        <p>Clear, secure, and role-based access for your school workspace.</p>
+                        <p>{{ __('ui.login.card_text') }}</p>
                     </div>
                 </div>
 
@@ -637,41 +615,21 @@
                     <button type="submit" class="submit-button">{{ __('ui.login.submit') }}</button>
                 </form>
 
-                @if ($demoAccounts !== [])
-                    <div class="demo-accounts">
-                        <strong>Demo Emails For Local Testing</strong>
-                        <div class="demo-account-list">
-                            @foreach ($demoAccounts as $account)
-                                <div class="demo-account-item">
-                                    <span>{{ $account['role'] }}</span>
-                                    <span>{{ $account['email'] }}</span>
-                                </div>
-                            @endforeach
-                        </div>
-                    </div>
-                @endif
-
                 <div class="login-meta">
                     <div class="meta-row">
                         <span class="meta-icon">1</span>
                         <div>
-                            <strong>{{ __('ui.login.magic_link_hint') }}</strong>
-                            <p>The sign-in link can be used once and expires automatically for better security.</p>
+                            <strong>{{ __('ui.login.magic_link_title') }}</strong>
+                            <p>{{ __('ui.login.magic_link_hint') }}</p>
                         </div>
                     </div>
                     <div class="meta-row">
                         <span class="meta-icon">2</span>
                         <div>
                             <strong>{{ __('ui.login.not_registered') }}</strong>
-                            <p>If you cannot access your account, please contact your school administrator to check your user setup.</p>
+                            <p>{{ __('ui.login.contact_admin_text') }}</p>
                         </div>
                     </div>
-                </div>
-
-                <div class="footer-links">
-                    <span>Email or username</span>
-                    <span>No password required</span>
-                    <span>Role-based redirect</span>
                 </div>
             </section>
         </section>

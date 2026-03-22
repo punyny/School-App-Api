@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
 
 class WebPanelSession
 {
@@ -21,8 +22,9 @@ class WebPanelSession
         Auth::login($user);
         $request->session()->regenerate();
 
-        $token = $user->createToken('web-panel');
-        $request->session()->put('web_api_token', $token->plainTextToken);
+        $expiresAt = now()->addMinutes((int) config('session.lifetime', 120));
+        $token = $user->createToken('web-panel', ['*'], $expiresAt);
+        $request->session()->put('web_api_token', Crypt::encryptString($token->plainTextToken));
         $request->session()->put('web_api_token_id', $token->accessToken->id);
     }
 }

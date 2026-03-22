@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Routing\UrlGenerator;
 use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Crypt;
 
 class InternalApiClient
 {
@@ -186,9 +188,16 @@ class InternalApiClient
 
     private function resolveToken(Request $request): string
     {
-        $token = (string) $request->session()->get('web_api_token', '');
-        if ($token !== '') {
-            return $token;
+        $encryptedToken = (string) $request->session()->get('web_api_token', '');
+        if ($encryptedToken !== '') {
+            try {
+                $token = Crypt::decryptString($encryptedToken);
+                if ($token !== '') {
+                    return $token;
+                }
+            } catch (DecryptException) {
+                $request->session()->forget('web_api_token');
+            }
         }
 
         $user = $request->user();
@@ -196,8 +205,9 @@ class InternalApiClient
             return '';
         }
 
-        $newToken = $user->createToken('web-panel-auto');
-        $request->session()->put('web_api_token', $newToken->plainTextToken);
+        $expiresAt = now()->addMinutes((int) config('session.lifetime', 120));
+        $newToken = $user->createToken('web-panel-auto', ['*'], $expiresAt);
+        $request->session()->put('web_api_token', Crypt::encryptString($newToken->plainTextToken));
         $request->session()->put('web_api_token_id', $newToken->accessToken->id);
 
         return $newToken->plainTextToken;

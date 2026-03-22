@@ -19,7 +19,17 @@ class EnforceAdminIpAllowlist
 
         $allowlist = $this->normalizeAllowlist((array) config('security.admin_ip_allowlist', []));
         if ($allowlist === []) {
-            return $next($request);
+            if (app()->environment(['local', 'testing'])) {
+                return $next($request);
+            }
+
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return new JsonResponse([
+                    'message' => 'Forbidden. Admin IP allowlist is not configured.',
+                ], 403);
+            }
+
+            abort(403, 'Forbidden. Admin IP allowlist is not configured.');
         }
 
         $ip = (string) $request->ip();

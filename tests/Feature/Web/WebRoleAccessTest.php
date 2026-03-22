@@ -24,8 +24,8 @@ class WebRoleAccessTest extends TestCase
         $response = $this->get('/login');
 
         $response->assertOk()
-            ->assertSee('School Portal Login')
-            ->assertSee('teacher@example.com');
+            ->assertSee('Sala Digital Web Portal')
+            ->assertSee('Send Web Login Link');
     }
 
     public function test_locale_switch_changes_login_page_to_khmer(): void
