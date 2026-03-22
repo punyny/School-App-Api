@@ -65,7 +65,7 @@ class WebRoleAccessTest extends TestCase
     {
         Notification::fake();
         $this->seed();
-        config(['app.url' => 'https://example.ngrok-free.dev']);
+        config(['app.url' => 'https://example.test']);
 
         $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
         $teacher->forceFill(['email_verified_at' => null])->save();

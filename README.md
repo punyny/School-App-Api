@@ -18,13 +18,9 @@ php artisan migrate --seed
 php artisan serve
 ```
 
-### Dev Modes
+### Local Dev Helper
 
-This project includes 2 simple dev modes so you can switch between normal local work and phone testing with ngrok.
-
-#### 1. Local normal mode
-
-Use this when developing on your Mac:
+Use this helper when developing on your Mac:
 
 ```bash
 ./scripts/dev/use-local-mode.sh
@@ -42,37 +38,6 @@ You can also pass a custom local URL:
 ```bash
 ./scripts/dev/use-local-mode.sh http://192.168.1.97:8001
 ```
-
-#### 2. Phone testing with ngrok
-
-Use this when your phone is on a different Wi-Fi or mobile data.
-
-Install ngrok first:
-
-```bash
-brew install ngrok/ngrok/ngrok
-ngrok config add-authtoken YOUR_TOKEN
-```
-
-Start Laravel:
-
-```bash
-php artisan serve --host=0.0.0.0 --port=8001
-```
-
-Start ngrok:
-
-```bash
-./scripts/dev/start-ngrok.sh 8001
-```
-
-Copy the generated `https://...ngrok-free.app` URL and switch the app into phone mode:
-
-```bash
-./scripts/dev/use-ngrok-mode.sh https://your-ngrok-url.ngrok-free.app
-```
-
-This updates `APP_URL` and clears Laravel cache, which helps email magic links work correctly on your phone.
 
 ### Docker
 
