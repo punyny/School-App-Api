@@ -101,7 +101,12 @@ class ClassController extends Controller
             'name' => ['required', 'string', 'max:50'],
             'grade_level' => ['nullable', 'string', 'max:50'],
             'room' => ['nullable', 'string', 'max:50'],
+            'study_days' => ['nullable', 'array', 'min:1'],
+            'study_days.*' => ['string', 'in:monday,tuesday,wednesday,thursday,friday,saturday,sunday', 'distinct'],
+            'study_time_start' => ['nullable', 'date_format:H:i'],
+            'study_time_end' => ['nullable', 'date_format:H:i'],
         ]);
+        $payload = $this->normalizeStudySchedule($payload);
 
         $schoolId = $this->resolveSchoolIdForWrite($authUser, $payload['school_id'] ?? null);
         $gradeLevel = $payload['grade_level'] ?? null;
@@ -117,6 +122,9 @@ class ClassController extends Controller
             'name' => $payload['name'],
             'grade_level' => $gradeLevel,
             'room' => $payload['room'] ?? null,
+            'study_days' => $payload['study_days'] ?? null,
+            'study_time_start' => $payload['study_time_start'] ?? null,
+            'study_time_end' => $payload['study_time_end'] ?? null,
         ]);
 
         return response()->json([
@@ -137,7 +145,12 @@ class ClassController extends Controller
             'name' => ['nullable', 'string', 'max:50'],
             'grade_level' => ['nullable', 'string', 'max:50'],
             'room' => ['nullable', 'string', 'max:50'],
+            'study_days' => ['nullable', 'array', 'min:1'],
+            'study_days.*' => ['string', 'in:monday,tuesday,wednesday,thursday,friday,saturday,sunday', 'distinct'],
+            'study_time_start' => ['nullable', 'date_format:H:i'],
+            'study_time_end' => ['nullable', 'date_format:H:i'],
         ]);
+        $payload = $this->normalizeStudySchedule($payload);
 
         $targetSchoolId = array_key_exists('school_id', $payload)
             ? $this->resolveSchoolIdForWrite($authUser, $payload['school_id'])
@@ -156,6 +169,13 @@ class ClassController extends Controller
             'name' => $targetName,
             'grade_level' => $targetGrade,
             'room' => array_key_exists('room', $payload) ? $payload['room'] : $schoolClass->room,
+            'study_days' => array_key_exists('study_days', $payload) ? $payload['study_days'] : $schoolClass->study_days,
+            'study_time_start' => array_key_exists('study_time_start', $payload)
+                ? $payload['study_time_start']
+                : $schoolClass->study_time_start,
+            'study_time_end' => array_key_exists('study_time_end', $payload)
+                ? $payload['study_time_end']
+                : $schoolClass->study_time_end,
         ])->save();
 
         return response()->json([
@@ -377,5 +397,38 @@ class ClassController extends Controller
         }
 
         return $query->exists();
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function normalizeStudySchedule(array $payload): array
+    {
+        if (array_key_exists('study_days', $payload) && is_array($payload['study_days'])) {
+            $payload['study_days'] = collect($payload['study_days'])
+                ->map(fn ($day): string => strtolower(trim((string) $day)))
+                ->filter(fn (string $day): bool => $day !== '')
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        $hasStart = array_key_exists('study_time_start', $payload) && ! empty($payload['study_time_start']);
+        $hasEnd = array_key_exists('study_time_end', $payload) && ! empty($payload['study_time_end']);
+
+        if ($hasStart xor $hasEnd) {
+            throw ValidationException::withMessages([
+                'study_time_end' => ['study_time_start and study_time_end must both be provided together.'],
+            ]);
+        }
+
+        if ($hasStart && $hasEnd && (string) $payload['study_time_end'] <= (string) $payload['study_time_start']) {
+            throw ValidationException::withMessages([
+                'study_time_end' => ['study_time_end must be after study_time_start.'],
+            ]);
+        }
+
+        return $payload;
     }
 }

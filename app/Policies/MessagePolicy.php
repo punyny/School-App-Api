@@ -34,12 +34,14 @@ class MessagePolicy
 
         if ($user->role === 'student') {
             return $message->class_id
-                && (int) ($user->studentProfile?->class_id) === (int) $message->class_id;
+                && (int) ($user->studentProfile?->class_id) === (int) $message->class_id
+                && in_array((string) ($message->class_target ?? 'students_parents'), ['students', 'students_parents'], true);
         }
 
         if ($user->role === 'parent') {
             return $message->class_id
-                && $user->children()->where('students.class_id', $message->class_id)->exists();
+                && $user->children()->where('students.class_id', $message->class_id)->exists()
+                && in_array((string) ($message->class_target ?? 'students_parents'), ['parents', 'students_parents'], true);
         }
 
         return false;

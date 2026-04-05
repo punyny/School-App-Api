@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\AttendanceStoreRequest;
 use App\Http\Requests\Api\AttendanceUpdateRequest;
 use App\Models\Attendance;
+use App\Models\Enrollment;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\Subject;
+use App\Models\Timetable;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
@@ -252,6 +254,110 @@ class AttendanceController extends Controller
         ]);
     }
 
+    public function trackingContext(Request $request): JsonResponse
+    {
+        $this->authorize('create', Attendance::class);
+
+        $payload = $request->validate([
+            'class_id' => ['required', 'integer', 'exists:classes,id'],
+            'date' => ['required', 'date'],
+        ]);
+
+        $user = $request->user();
+        $classId = (int) $payload['class_id'];
+        $date = Carbon::parse((string) $payload['date'])->toDateString();
+        $dayOfWeek = strtolower(Carbon::parse($date)->format('l'));
+
+        if (! $this->canManageClass($user, $classId)) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        /** @var SchoolClass|null $class */
+        $class = SchoolClass::query()
+            ->with([
+                'students.user',
+                'timetables' => fn ($query) => $query
+                    ->where('day_of_week', $dayOfWeek)
+                    ->with(['subject', 'teacher'])
+                    ->orderBy('time_start'),
+            ])
+            ->find($classId);
+
+        if (! $class) {
+            return response()->json(['message' => 'Class not found.'], 404);
+        }
+
+        $studyDays = $this->resolveClassStudyDays($class);
+        $isStudyDay = in_array($dayOfWeek, $studyDays, true);
+
+        $sessionRows = collect($class->timetables ?? [])
+            ->filter(fn (Timetable $row): bool => $this->canManageSubject($user, $classId, (int) $row->subject_id))
+            ->values();
+
+        $studentIds = collect($class->students ?? [])->pluck('id')->map(fn ($id): int => (int) $id)->filter()->unique()->values()->all();
+        $eligibleStudents = [];
+        $blockedStudents = [];
+
+        foreach ($class->students as $student) {
+            $studentId = (int) $student->id;
+            if ($studentId <= 0) {
+                continue;
+            }
+
+            $enrollmentDate = $this->resolveStudentEnrollmentDateForClass($studentId, $classId);
+            $studentName = (string) ($student->user?->name ?? 'Student '.$studentId);
+            $studentCode = (string) ($student->student_code ?? '');
+
+            $entry = [
+                'id' => $studentId,
+                'name' => $studentName,
+                'student_code' => $studentCode,
+                'enrollment_date' => $enrollmentDate?->toDateString(),
+            ];
+
+            if (! $enrollmentDate || Carbon::parse($date)->lt($enrollmentDate)) {
+                $blockedStudents[] = $entry;
+
+                continue;
+            }
+
+            $eligibleStudents[] = $entry;
+        }
+
+        $sessions = $sessionRows->map(function (Timetable $row): array {
+            return [
+                'timetable_id' => (int) $row->id,
+                'subject_id' => (int) $row->subject_id,
+                'subject_name' => (string) ($row->subject?->name ?? 'Subject'),
+                'teacher_id' => (int) ($row->teacher_id ?? 0),
+                'teacher_name' => (string) ($row->teacher?->name ?? 'Teacher'),
+                'time_start' => substr((string) $row->time_start, 0, 5),
+                'time_end' => substr((string) $row->time_end, 0, 5),
+            ];
+        })->values()->all();
+
+        return response()->json([
+            'data' => [
+                'class_id' => $classId,
+                'class_name' => (string) ($class->name ?? 'Class'),
+                'date' => $date,
+                'day_of_week' => $dayOfWeek,
+                'is_study_day' => $isStudyDay,
+                'class_schedule' => [
+                    'study_days' => $studyDays,
+                    'study_time_start' => $class->study_time_start ? substr((string) $class->study_time_start, 0, 5) : null,
+                    'study_time_end' => $class->study_time_end ? substr((string) $class->study_time_end, 0, 5) : null,
+                ],
+                'sessions' => $sessions,
+                'eligible_students' => $eligibleStudents,
+                'blocked_students' => $blockedStudents,
+                'total_students' => count($studentIds),
+                'eligible_students_count' => count($eligibleStudents),
+                'blocked_students_count' => count($blockedStudents),
+            ],
+        ]);
+    }
+
     public function store(AttendanceStoreRequest $request): JsonResponse
     {
         $this->authorize('create', Attendance::class);
@@ -271,6 +377,20 @@ class AttendanceController extends Controller
         }
 
         $payload = $this->normalizeAttendancePayload($payload);
+        $this->ensureStudentEnrollmentDate((int) $payload['student_id'], (int) $payload['class_id'], (string) $payload['date']);
+        $this->validateClassScheduleWindow(
+            classId: (int) $payload['class_id'],
+            date: (string) $payload['date'],
+            timeStart: (string) $payload['time_start'],
+            timeEnd: $payload['time_end'] ?? null,
+        );
+        $this->ensureSubjectSessionMatchesTimetable(
+            classId: (int) $payload['class_id'],
+            subjectId: isset($payload['subject_id']) ? (int) $payload['subject_id'] : null,
+            date: (string) $payload['date'],
+            timeStart: (string) $payload['time_start'],
+            timeEnd: $payload['time_end'] ?? null,
+        );
         $this->validateTimeRange((string) $payload['time_start'], $payload['time_end'] ?? null);
 
         if ($this->hasDuplicateRecord($payload)) {
@@ -293,7 +413,7 @@ class AttendanceController extends Controller
 
         $payload = $request->validate([
             'class_id' => ['required', 'integer', 'exists:classes,id'],
-            'subject_id' => ['nullable', 'integer', 'exists:subjects,id'],
+            'subject_id' => ['required', 'integer', 'exists:subjects,id'],
             'date' => ['required', 'date'],
             'time_start' => ['required', 'date_format:H:i'],
             'time_end' => ['nullable', 'date_format:H:i', 'after:time_start'],
@@ -325,6 +445,19 @@ class AttendanceController extends Controller
             'time_end' => $payload['time_end'] ?? null,
         ]);
 
+        $this->validateClassScheduleWindow(
+            classId: $classId,
+            date: (string) $basePayload['date'],
+            timeStart: (string) $basePayload['time_start'],
+            timeEnd: $basePayload['time_end'] ?? null,
+        );
+        $this->ensureSubjectSessionMatchesTimetable(
+            classId: $classId,
+            subjectId: $subjectId,
+            date: (string) $basePayload['date'],
+            timeStart: (string) $basePayload['time_start'],
+            timeEnd: $basePayload['time_end'] ?? null,
+        );
         $this->validateTimeRange((string) $basePayload['time_start'], $basePayload['time_end'] ?? null);
 
         $created = 0;
@@ -334,6 +467,7 @@ class AttendanceController extends Controller
         foreach ($payload['records'] as $record) {
             $studentId = (int) ($record['student_id'] ?? 0);
             $this->ensureStudentBelongsToClass($studentId, $classId);
+            $this->ensureStudentEnrollmentDate($studentId, $classId, (string) $basePayload['date']);
 
             $attendance = Attendance::query()->updateOrCreate(
                 [
@@ -397,6 +531,20 @@ class AttendanceController extends Controller
 
         $payload = $this->normalizeAttendancePayload($payload);
         $merged = array_merge($attendance->only(['student_id', 'class_id', 'subject_id', 'date', 'time_start']), $payload);
+        $this->ensureStudentEnrollmentDate((int) $merged['student_id'], (int) $merged['class_id'], (string) $merged['date']);
+        $this->validateClassScheduleWindow(
+            classId: (int) $merged['class_id'],
+            date: (string) $merged['date'],
+            timeStart: (string) $merged['time_start'],
+            timeEnd: $merged['time_end'] ?? null,
+        );
+        $this->ensureSubjectSessionMatchesTimetable(
+            classId: (int) $merged['class_id'],
+            subjectId: isset($merged['subject_id']) ? (int) $merged['subject_id'] : null,
+            date: (string) $merged['date'],
+            timeStart: (string) $merged['time_start'],
+            timeEnd: $merged['time_end'] ?? null,
+        );
         $this->validateTimeRange((string) $merged['time_start'], $merged['time_end'] ?? null);
 
         if ($this->hasDuplicateRecord($merged, $attendance->id)) {
@@ -601,6 +749,20 @@ class AttendanceController extends Controller
                 }
 
                 $this->ensureStudentBelongsToClass((int) $record['student_id'], (int) $record['class_id']);
+                $this->ensureStudentEnrollmentDate((int) $record['student_id'], (int) $record['class_id'], (string) $record['date']);
+                $this->validateClassScheduleWindow(
+                    classId: (int) $record['class_id'],
+                    date: (string) $record['date'],
+                    timeStart: (string) $record['time_start'],
+                    timeEnd: $record['time_end'],
+                );
+                $this->ensureSubjectSessionMatchesTimetable(
+                    classId: (int) $record['class_id'],
+                    subjectId: isset($record['subject_id']) ? (int) $record['subject_id'] : null,
+                    date: (string) $record['date'],
+                    timeStart: (string) $record['time_start'],
+                    timeEnd: $record['time_end'],
+                );
                 $this->validateTimeRange((string) $record['time_start'], $record['time_end']);
 
                 $normalized = $this->normalizeAttendancePayload($record);
@@ -640,6 +802,149 @@ class AttendanceController extends Controller
                 'errors' => $errors,
             ],
         ], 201);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolveClassStudyDays(SchoolClass $class): array
+    {
+        $allDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+        $studyDays = collect($class->study_days ?? [])
+            ->map(fn ($day): string => strtolower(trim((string) $day)))
+            ->filter(fn (string $day): bool => in_array($day, $allDays, true))
+            ->unique()
+            ->values()
+            ->all();
+
+        return $studyDays === [] ? $allDays : $studyDays;
+    }
+
+    private function validateClassScheduleWindow(
+        int $classId,
+        string $date,
+        string $timeStart,
+        ?string $timeEnd
+    ): void {
+        /** @var SchoolClass|null $class */
+        $class = SchoolClass::query()->find($classId);
+        if (! $class) {
+            throw ValidationException::withMessages([
+                'class_id' => ['Selected class is invalid.'],
+            ]);
+        }
+
+        $dayOfWeek = strtolower(Carbon::parse($date)->format('l'));
+        $studyDays = $this->resolveClassStudyDays($class);
+
+        if (! in_array($dayOfWeek, $studyDays, true)) {
+            throw ValidationException::withMessages([
+                'date' => ['Selected date is outside class study days.'],
+            ]);
+        }
+
+        if ($class->study_time_start && $class->study_time_end) {
+            $startText = substr((string) $class->study_time_start, 0, 8);
+            $endText = substr((string) $class->study_time_end, 0, 8);
+            $targetEnd = $timeEnd ?: $timeStart;
+
+            if (strtotime($timeStart) < strtotime($startText) || strtotime($targetEnd) > strtotime($endText)) {
+                throw ValidationException::withMessages([
+                    'time_start' => ['Attendance time is outside configured class study hours.'],
+                ]);
+            }
+        }
+    }
+
+    private function ensureStudentEnrollmentDate(int $studentId, int $classId, string $date): void
+    {
+        $enrollmentDate = $this->resolveStudentEnrollmentDateForClass($studentId, $classId);
+        if (! $enrollmentDate) {
+            throw ValidationException::withMessages([
+                'student_id' => ['Student enrollment date is missing for this class. Please set enrollment first.'],
+            ]);
+        }
+
+        if (Carbon::parse($date)->lt($enrollmentDate)) {
+            throw ValidationException::withMessages([
+                'date' => ['Attendance date cannot be earlier than student enrollment date ('.$enrollmentDate->toDateString().').'],
+            ]);
+        }
+    }
+
+    private function resolveStudentEnrollmentDateForClass(int $studentId, int $classId): ?Carbon
+    {
+        $enrollment = Enrollment::query()
+            ->where('student_id', $studentId)
+            ->where('class_id', $classId)
+            ->whereIn('status', ['Enrolled', 'Promoted', 'Completed'])
+            ->orderBy('enrollment_date')
+            ->first();
+
+        if ($enrollment && $enrollment->enrollment_date) {
+            return Carbon::parse((string) $enrollment->enrollment_date)->startOfDay();
+        }
+
+        $student = Student::query()->find($studentId);
+        if ($student && $student->admission_date) {
+            return Carbon::parse((string) $student->admission_date)->startOfDay();
+        }
+
+        $class = SchoolClass::query()
+            ->with('school:id,config_details')
+            ->find($classId);
+        $defaultEnrollmentDate = trim((string) data_get($class, 'school.config_details.default_enrollment_date', ''));
+        if ($defaultEnrollmentDate !== '') {
+            try {
+                return Carbon::parse($defaultEnrollmentDate)->startOfDay();
+            } catch (\Throwable) {
+                // Ignore invalid legacy config values and continue to null.
+            }
+        }
+
+        return null;
+    }
+
+    private function ensureSubjectSessionMatchesTimetable(
+        int $classId,
+        ?int $subjectId,
+        string $date,
+        string $timeStart,
+        ?string $timeEnd
+    ): void {
+        if (! $subjectId || $subjectId <= 0) {
+            return;
+        }
+
+        $dayOfWeek = strtolower(Carbon::parse($date)->format('l'));
+        $sessionEnd = $timeEnd ?: $timeStart;
+
+        $rows = Timetable::query()
+            ->where('class_id', $classId)
+            ->where('subject_id', $subjectId)
+            ->where('day_of_week', $dayOfWeek)
+            ->orderBy('time_start')
+            ->get(['time_start', 'time_end']);
+
+        if ($rows->isEmpty()) {
+            throw ValidationException::withMessages([
+                'subject_id' => ['No timetable session found for selected subject on this date.'],
+            ]);
+        }
+
+        $matched = $rows->contains(function (Timetable $row) use ($timeStart, $sessionEnd): bool {
+            $rowStart = (string) $row->time_start;
+            $rowEnd = (string) $row->time_end;
+
+            return strtotime($timeStart) >= strtotime($rowStart)
+                && strtotime($sessionEnd) <= strtotime($rowEnd);
+        });
+
+        if (! $matched) {
+            throw ValidationException::withMessages([
+                'time_start' => ['Attendance time must match timetable period for the selected subject.'],
+            ]);
+        }
     }
 
     private function applyVisibilityScope(Builder $query, User $user): void

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\InteractsWithInternalApi;
 use App\Services\InternalApiClient;
+use App\Support\PasswordRule;
 use App\Support\ProfileImageStorage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -57,6 +58,24 @@ class ProfileController extends Controller
         }
 
         return back()->with('success', 'Profile updated successfully.');
+    }
+
+    public function changePassword(Request $request, InternalApiClient $api): RedirectResponse
+    {
+        $payload = $request->validate([
+            'new_password' => ['required', 'confirmed', PasswordRule::defaults()],
+            'new_password_confirmation' => ['required', 'string'],
+        ]);
+
+        $result = $api->post($request, '/api/auth/change-password', $payload);
+        if ($result['status'] !== 200) {
+            return back()->withErrors($this->extractErrors($result));
+        }
+
+        // The API revokes previous tokens after password change, so force a clean token on the next request.
+        $request->session()->forget(['web_api_token', 'web_api_token_id']);
+
+        return back()->with('success', 'Password changed successfully.');
     }
 
     /**

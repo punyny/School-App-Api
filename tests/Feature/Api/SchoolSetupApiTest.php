@@ -106,6 +106,23 @@ class SchoolSetupApiTest extends TestCase
         $this->assertSame((int) $admin->school_id, (int) $subject->json('data.school_id'));
     }
 
+    public function test_admin_cannot_create_user_without_password(): void
+    {
+        $this->seed();
+
+        $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $token = $admin->createToken('phpunit')->plainTextToken;
+
+        $response = $this->withToken($token)->postJson('/api/users', [
+            'role' => 'teacher',
+            'name' => 'No Password Teacher',
+            'email' => 'no.password.teacher@example.com',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['password']);
+    }
+
     public function test_admin_can_import_user_csv_without_password_column(): void
     {
         $this->seed();
@@ -151,6 +168,7 @@ class SchoolSetupApiTest extends TestCase
             'role' => 'teacher',
             'name' => 'New Matt',
             'email' => 'matt.rorny2023@edu.diu.kh',
+            'password' => 'password123',
         ]);
 
         $response->assertCreated()
@@ -182,6 +200,7 @@ class SchoolSetupApiTest extends TestCase
             'role' => 'teacher',
             'name' => 'Recreated Teacher',
             'email' => 'deleted.teacher@example.com',
+            'password' => 'password123',
             'phone' => '010202020',
         ]);
 

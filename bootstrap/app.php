@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Http\Request;
 use Illuminate\Session\TokenMismatchException;
 
@@ -34,6 +35,32 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(function (PostTooLargeException $exception, Request $request) {
+            $maxMb = \App\Support\ProfileImageStorage::maxUploadMb();
+            $message = "Upload is too large. Maximum allowed file size is {$maxMb} MB.";
+
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'message' => $message,
+                    'errors' => [
+                        'image' => [$message],
+                    ],
+                ], 413);
+            }
+
+            return redirect()->back()
+                ->withInput($request->except([
+                    '_token',
+                    'password',
+                    'current_password',
+                    'new_password',
+                    'new_password_confirmation',
+                ]))
+                ->withErrors([
+                    'image' => [$message],
+                ]);
+        });
+
         $exceptions->render(function (TokenMismatchException $exception, Request $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
                 return null;

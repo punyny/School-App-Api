@@ -139,6 +139,11 @@
             font-size: 14px;
         }
 
+        body.locale-km .sidebar-group-toggle {
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
         .shell {
             max-width: 1580px;
             margin: 0 auto;
@@ -228,6 +233,77 @@
             display: grid;
             gap: 5px;
             margin-bottom: 10px;
+        }
+
+        .sidebar-group {
+            border: 1px solid #d5e1dd;
+            border-radius: 13px;
+            background: rgba(255, 255, 255, 0.72);
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        .sidebar-group-toggle {
+            width: 100%;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            color: #4f615a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px 12px;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.35px;
+            text-transform: uppercase;
+            box-shadow: none;
+        }
+
+        .sidebar-group-toggle:hover {
+            transform: none;
+            background: var(--surface-soft);
+            color: var(--primary-2);
+            box-shadow: none;
+        }
+
+        .sidebar-group-label {
+            text-align: left;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .sidebar-group-chevron {
+            width: 18px;
+            height: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #73847e;
+            flex: 0 0 auto;
+        }
+
+        .sidebar-group-chevron svg {
+            width: 16px;
+            height: 16px;
+            transition: transform .18s ease;
+        }
+
+        .sidebar-group[data-open="1"] .sidebar-group-chevron svg {
+            transform: rotate(180deg);
+        }
+
+        .sidebar-group .sidebar-links {
+            display: none;
+            margin: 0;
+            padding: 8px;
+            border-top: 1px solid var(--line);
+        }
+
+        .sidebar-group[data-open="1"] .sidebar-links {
+            display: grid;
         }
 
         .sidebar-links a {
@@ -1667,6 +1743,7 @@
         }
 
         html[data-theme="dark"] .global-sidebar h3,
+        html[data-theme="dark"] .sidebar-group-toggle,
         html[data-theme="dark"] .sidebar-links a,
         html[data-theme="dark"] .nav-icon,
         html[data-theme="dark"] .workflow-title,
@@ -1682,6 +1759,7 @@
         html[data-theme="dark"] .user-chip,
         html[data-theme="dark"] .head-link,
         html[data-theme="dark"] .nav a,
+        html[data-theme="dark"] .sidebar-group,
         html[data-theme="dark"] .card,
         html[data-theme="dark"] .panel,
         html[data-theme="dark"] input,
@@ -1743,10 +1821,15 @@
         html[data-theme="dark"] .sidebar-toggle:hover,
         html[data-theme="dark"] .head-link:hover,
         html[data-theme="dark"] .nav a:hover,
+        html[data-theme="dark"] .sidebar-group-toggle:hover,
         html[data-theme="dark"] .sidebar-links a:hover {
             background: var(--surface-soft);
             border-color: #3b5a55;
             color: var(--primary);
+        }
+
+        html[data-theme="dark"] .sidebar-group .sidebar-links {
+            border-top-color: var(--line);
         }
 
         html[data-theme="dark"] .sidebar-links a.active,
@@ -1797,6 +1880,23 @@
         .app-frame.sidebar-collapsed .global-sidebar h3,
         .app-frame.sidebar-collapsed .sidebar-links a .nav-text {
             display: none;
+        }
+
+        .app-frame.sidebar-collapsed .sidebar-group {
+            border: none;
+            background: transparent;
+            margin-bottom: 8px;
+        }
+
+        .app-frame.sidebar-collapsed .sidebar-group-toggle {
+            display: none;
+        }
+
+        .app-frame.sidebar-collapsed .sidebar-group .sidebar-links {
+            display: grid !important;
+            margin-bottom: 8px;
+            padding: 0;
+            border-top: none;
         }
 
         .app-frame.sidebar-collapsed .sidebar-links a {
@@ -2152,12 +2252,15 @@
                             <a data-nav-item data-nav-icon="layout-dashboard" href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') || request()->routeIs('admin.dashboard') || request()->routeIs('teacher.dashboard') || request()->routeIs('super-admin.dashboard') || request()->routeIs('student.dashboard') || request()->routeIs('parent.dashboard') ? 'active' : '' }}">{{ __('ui.layout.dashboard') }}</a>
                         </div>
 
-                        @if($role === 'super-admin')
+                        @if(in_array($role, ['super-admin', 'admin'], true))
                             <h3>{{ __('ui.layout.system') }}</h3>
                             <div class="sidebar-links">
-                                <a data-nav-item data-nav-icon="school" href="{{ route('panel.schools.index') }}" class="{{ request()->routeIs('panel.schools.*') ? 'active' : '' }}">{{ __('ui.layout.school_directory') }}</a>
-                                <a data-nav-item data-nav-icon="users" href="{{ route('panel.users.index', ['role' => 'admin']) }}" class="{{ request()->fullUrlIs('*role=admin*') ? 'active' : '' }}">{{ __('ui.layout.admin_directory') }}</a>
-                                <a data-nav-item data-nav-icon="panel-top" href="{{ route('super-admin.dashboard') }}" class="{{ request()->routeIs('super-admin.dashboard') ? 'active' : '' }}">{{ __('ui.layout.system_overview') }}</a>
+                                <a data-nav-item data-nav-icon="school" href="{{ route('panel.schools.index') }}" class="{{ request()->routeIs('panel.schools.index') || request()->routeIs('panel.schools.create') || (request()->routeIs('panel.schools.edit') && request('focus') !== 'enrollment-date') ? 'active' : '' }}">{{ __('ui.layout.school_directory') }}</a>
+                                <a data-nav-item data-nav-icon="calendar-days" href="{{ route('panel.schools.enrollment-date') }}" class="{{ request()->routeIs('panel.schools.enrollment-date') ? 'active' : '' }}">{{ __('ui.layout.enrollment_date') }}</a>
+                                @if($role === 'super-admin')
+                                    <a data-nav-item data-nav-icon="users" href="{{ route('panel.users.index', ['role' => 'admin']) }}" class="{{ request()->fullUrlIs('*role=admin*') ? 'active' : '' }}">{{ __('ui.layout.admin_directory') }}</a>
+                                    <a data-nav-item data-nav-icon="panel-top" href="{{ route('super-admin.dashboard') }}" class="{{ request()->routeIs('super-admin.dashboard') ? 'active' : '' }}">{{ __('ui.layout.system_overview') }}</a>
+                                @endif
                             </div>
                         @endif
 
@@ -2455,12 +2558,30 @@
             var navSearchInput = document.getElementById('sidebar-filter-input');
             var sidebar = document.getElementById('sidebar-nav');
             var navItems = [];
+            var navGroups = [];
             var normalize = function (value) {
                 return (value || '')
                     .toString()
                     .trim()
                     .toLowerCase()
                     .replace(/\s+/g, ' ');
+            };
+            var setNavGroupState = function (group, open, rememberChoice) {
+                if (!group) {
+                    return;
+                }
+
+                var isOpen = !!open;
+                group.setAttribute('data-open', isOpen ? '1' : '0');
+
+                var toggle = group.querySelector('.sidebar-group-toggle');
+                if (toggle) {
+                    toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                }
+
+                if (rememberChoice) {
+                    group.setAttribute('data-user-open', isOpen ? '1' : '0');
+                }
             };
 
             if (sidebar) {
@@ -2500,6 +2621,54 @@
                     item.classList.add('nav-item-link');
                     item.innerHTML = '<span class="nav-icon"><i data-lucide=\"' + icon + '\"></i></span><span class=\"nav-text\">' + item.textContent.trim() + '</span>';
                     item.setAttribute('data-nav-enhanced', '1');
+                });
+
+                var sidebarChildren = Array.prototype.slice.call(sidebar.children);
+                sidebarChildren.forEach(function (node) {
+                    if (!node || node.tagName !== 'H3') {
+                        return;
+                    }
+
+                    var links = node.nextElementSibling;
+                    if (!links || !links.classList.contains('sidebar-links')) {
+                        return;
+                    }
+
+                    var section = document.createElement('section');
+                    section.className = 'sidebar-group';
+                    section.setAttribute('data-nav-group', '1');
+
+                    var toggle = document.createElement('button');
+                    toggle.type = 'button';
+                    toggle.className = 'sidebar-group-toggle';
+
+                    var label = document.createElement('span');
+                    label.className = 'sidebar-group-label';
+                    label.textContent = (node.textContent || '').trim();
+
+                    var chevron = document.createElement('span');
+                    chevron.className = 'sidebar-group-chevron';
+                    chevron.innerHTML = '<i data-lucide=\"chevron-down\"></i>';
+
+                    toggle.appendChild(label);
+                    toggle.appendChild(chevron);
+
+                    var defaultOpen = !!links.querySelector('a.active');
+                    section.setAttribute('data-default-open', defaultOpen ? '1' : '0');
+
+                    section.appendChild(toggle);
+                    section.appendChild(links);
+
+                    node.parentNode.insertBefore(section, node);
+                    node.remove();
+
+                    setNavGroupState(section, defaultOpen, false);
+                    toggle.addEventListener('click', function () {
+                        var current = section.getAttribute('data-open') === '1';
+                        setNavGroupState(section, !current, true);
+                    });
+
+                    navGroups.push(section);
                 });
             }
 
@@ -2706,10 +2875,47 @@
             if (navSearchInput && sidebar && navItems.length > 0) {
                 navSearchInput.addEventListener('input', function () {
                     var query = navSearchInput.value.trim().toLowerCase();
-                    navItems.forEach(function (item) {
-                        var textNode = item.querySelector('.nav-text');
-                        var text = (textNode ? textNode.textContent : item.textContent || '').toLowerCase();
-                        item.style.display = query === '' || text.indexOf(query) !== -1 ? '' : 'none';
+                    if (navGroups.length === 0) {
+                        navItems.forEach(function (item) {
+                            var textNode = item.querySelector('.nav-text');
+                            var text = (textNode ? textNode.textContent : item.textContent || '').toLowerCase();
+                            item.style.display = query === '' || text.indexOf(query) !== -1 ? '' : 'none';
+                        });
+                        return;
+                    }
+
+                    if (query === '') {
+                        navItems.forEach(function (item) {
+                            item.style.display = '';
+                        });
+
+                        navGroups.forEach(function (group) {
+                            group.style.display = '';
+                            var preferred = group.getAttribute('data-user-open');
+                            var fallback = group.getAttribute('data-default-open') === '1';
+                            setNavGroupState(group, preferred === null ? fallback : preferred === '1', false);
+                        });
+                        return;
+                    }
+
+                    navGroups.forEach(function (group) {
+                        var groupItems = Array.prototype.slice.call(group.querySelectorAll('[data-nav-item]'));
+                        var hasVisible = false;
+
+                        groupItems.forEach(function (item) {
+                            var textNode = item.querySelector('.nav-text');
+                            var text = (textNode ? textNode.textContent : item.textContent || '').toLowerCase();
+                            var visible = text.indexOf(query) !== -1;
+                            item.style.display = visible ? '' : 'none';
+                            if (visible) {
+                                hasVisible = true;
+                            }
+                        });
+
+                        group.style.display = hasVisible ? '' : 'none';
+                        if (hasVisible) {
+                            setNavGroupState(group, true, false);
+                        }
                     });
                 });
             }

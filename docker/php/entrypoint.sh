@@ -3,6 +3,16 @@ set -e
 
 cd /var/www/html
 
+UPLOAD_MAX_FILESIZE="${UPLOAD_MAX_FILESIZE:-20M}"
+POST_MAX_SIZE="${POST_MAX_SIZE:-20M}"
+PHP_MEMORY_LIMIT="${PHP_MEMORY_LIMIT:-256M}"
+
+cat >/usr/local/etc/php/conf.d/zz-upload-limits.ini <<EOF
+upload_max_filesize=${UPLOAD_MAX_FILESIZE}
+post_max_size=${POST_MAX_SIZE}
+memory_limit=${PHP_MEMORY_LIMIT}
+EOF
+
 if [ ! -f .env ]; then
   cp .env.example .env
 fi

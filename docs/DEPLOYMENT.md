@@ -7,6 +7,13 @@ cp .env.docker.example .env
 ```
 
 Then edit `.env` if you need custom database credentials.
+For profile image uploads, these defaults are included and can be adjusted:
+
+```bash
+UPLOAD_PROFILE_IMAGE_MAX_KB=10240
+UPLOAD_MAX_FILESIZE=20M
+POST_MAX_SIZE=20M
+```
 
 ## 2) Start containers
 

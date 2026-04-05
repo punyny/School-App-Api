@@ -24,6 +24,7 @@ class MessageStoreRequest extends FormRequest
         return [
             'receiver_id' => ['nullable', 'integer', 'exists:users,id'],
             'class_id' => ['nullable', 'integer', 'exists:classes,id'],
+            'class_target' => ['nullable', 'string', 'in:students,parents,students_parents'],
             'content' => ['required', 'string'],
             'date' => ['nullable', 'date'],
         ];

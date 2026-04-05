@@ -531,9 +531,8 @@ class LeaveRequestController extends Controller
         $teacherIds = User::query()
             ->where('school_id', $schoolId)
             ->where('role', 'teacher')
-            ->whereHas('teachingClasses', function (Builder $classQuery) use ($classId, $subjectIds): void {
-                $classQuery->where('classes.id', $classId)
-                    ->whereIn('teacher_class.subject_id', $subjectIds);
+            ->whereHas('teachingClasses', function (Builder $classQuery) use ($classId): void {
+                $classQuery->where('classes.id', $classId);
             })
             ->pluck('id')
             ->map(fn ($id): int => (int) $id)

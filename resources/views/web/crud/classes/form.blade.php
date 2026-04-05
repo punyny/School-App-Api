@@ -6,6 +6,13 @@
         $classNameValue = old('name', $item['name'] ?? '');
         $selectedGrade = (string) old('grade_level', $item['grade_level'] ?? '');
         $roomValue = old('room', $item['room'] ?? '');
+        $studyDaysSelected = collect(old('study_days', $item['study_days'] ?? []))
+            ->map(fn ($day) => strtolower((string) $day))
+            ->filter(fn ($day) => $day !== '')
+            ->values()
+            ->all();
+        $studyTimeStartValue = old('study_time_start', isset($item['study_time_start']) ? substr((string) $item['study_time_start'], 0, 5) : '');
+        $studyTimeEndValue = old('study_time_end', isset($item['study_time_end']) ? substr((string) $item['study_time_end'], 0, 5) : '');
 
         $teacherOptions = collect($teacherOptions ?? [])->filter(fn ($row) => is_array($row))->values();
         $subjectOptions = collect($subjectOptions ?? [])->filter(fn ($row) => is_array($row))->values();
@@ -47,7 +54,7 @@
                 'teacher_id' => (string) ($row['teacher_id'] ?? ''),
                 'time_start' => substr((string) ($row['time_start'] ?? ''), 0, 5),
                 'time_end' => substr((string) ($row['time_end'] ?? ''), 0, 5),
-            ])->filter(fn ($row) => in_array($row['day_of_week'], ['monday','tuesday','wednesday','thursday','friday','saturday'], true))->values();
+            ])->filter(fn ($row) => in_array($row['day_of_week'], ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'], true))->values();
         } else {
             $timetableRows = collect();
         }
@@ -194,7 +201,7 @@
     </style>
 
     <h1 class="title">{{ $mode === 'create' ? 'Create Class' : 'Edit Class' }}</h1>
-    <p class="subtitle">Setup class name/grade/room, then assign teachers, subjects, students, and Monday-Saturday routine in one form.</p>
+    <p class="subtitle">Setup class name/grade/room, then assign teachers, subjects, students, and Monday-Sunday routine in one form.</p>
 
     <div class="nav">
         <a href="{{ route('panel.classes.index') }}">Back to list</a>
@@ -253,6 +260,28 @@
                     <div>
                         <label>Room</label>
                         <input type="text" name="room" value="{{ $roomValue }}" placeholder="Example: A-01">
+                    </div>
+                </div>
+
+                <div class="class-basic-grid" style="margin-top:12px;">
+                    <div>
+                        <label>Study Days (Monday to Sunday)</label>
+                        <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:6px;">
+                            @foreach(($weekdayOptions ?? ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']) as $day)
+                                <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
+                                    <input type="checkbox" name="study_days[]" value="{{ $day }}" {{ in_array($day, $studyDaysSelected, true) ? 'checked' : '' }}>
+                                    <span>{{ ucfirst($day) }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <div>
+                        <label>Study Hours (Optional)</label>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+                            <input type="time" name="study_time_start" value="{{ $studyTimeStartValue }}" placeholder="Start">
+                            <input type="time" name="study_time_end" value="{{ $studyTimeEndValue }}" placeholder="End">
+                        </div>
                     </div>
                 </div>
             </section>
@@ -368,8 +397,8 @@
             </section>
 
             <section class="class-form-card">
-                <h3>4) Weekly Routine (Monday to Saturday)</h3>
-                <p class="class-form-muted">បញ្ចូលម៉ោងរៀនប្រចាំសប្តាហ៍ (មិនបញ្ចូលអាទិត្យ)។</p>
+                <h3>4) Weekly Routine (Monday to Sunday)</h3>
+                <p class="class-form-muted">បញ្ចូលម៉ោងរៀនប្រចាំសប្តាហ៍ (រួមទាំងអាទិត្យបើសាលាមានរៀន)។</p>
 
                 <div class="class-inline-actions">
                     <button type="button" id="add-routine-row">+ Add routine row</button>
@@ -393,7 +422,7 @@
                                     <td>
                                         <select name="timetable_rows[{{ $index }}][day_of_week]">
                                             <option value="">Select day</option>
-                                            @foreach(($weekdayOptions ?? ['monday','tuesday','wednesday','thursday','friday','saturday']) as $day)
+                                            @foreach(($weekdayOptions ?? ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']) as $day)
                                                 <option value="{{ $day }}" {{ (string) $row['day_of_week'] === (string) $day ? 'selected' : '' }}>{{ ucfirst($day) }}</option>
                                             @endforeach
                                         </select>
@@ -479,7 +508,7 @@
             <td>
                 <select data-name="timetable_rows[__INDEX__][day_of_week]">
                     <option value="">Select day</option>
-                    @foreach(($weekdayOptions ?? ['monday','tuesday','wednesday','thursday','friday','saturday']) as $day)
+                    @foreach(($weekdayOptions ?? ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']) as $day)
                         <option value="{{ $day }}">{{ ucfirst($day) }}</option>
                     @endforeach
                 </select>

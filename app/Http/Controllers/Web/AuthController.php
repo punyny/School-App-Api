@@ -11,6 +11,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
@@ -30,8 +31,9 @@ class AuthController extends Controller
         ]);
     }
 
-    public function login(Request $request): RedirectResponse
+    public function login(Request $request, WebPanelSession $session): RedirectResponse
     {
+        $authMethod = $this->resolveAuthMethod($request);
         $throttleKey = $this->throttleKey($request);
         $maxAttempts = (int) config('security.login.max_attempts', 5);
         if (RateLimiter::tooManyAttempts($throttleKey, $maxAttempts)) {
@@ -44,20 +46,44 @@ class AuthController extends Controller
 
         $decaySeconds = (int) config('security.login.decay_seconds', 60);
         $payload = $request->validate([
-            'login' => ['required', 'string', 'max:100'],
+            'auth_method' => ['nullable', 'in:magic_link,password'],
+            'login' => ['required', 'email', 'max:255'],
+            'password' => ['nullable', 'string', 'max:255', 'required_if:auth_method,password'],
         ]);
 
         RateLimiter::hit($throttleKey, $decaySeconds);
 
-        $login = trim((string) $payload['login']);
+        $email = Str::lower(trim((string) $payload['login']));
         $user = User::query()
-            ->where('email', $login)
-            ->orWhere('username', $login)
+            ->where('email', $email)
             ->first();
+
+        if ($authMethod === 'password') {
+            $storedPassword = $user?->password ?? $user?->password_hash;
+            $isValidPassword = $user
+                && $user->active !== false
+                && $user->is_active !== false
+                && is_string($storedPassword)
+                && $storedPassword !== ''
+                && Hash::check((string) ($payload['password'] ?? ''), $storedPassword);
+
+            if (! $isValidPassword) {
+                return back()
+                    ->withInput($request->except('password'))
+                    ->withErrors([
+                        'login' => [__('auth.failed')],
+                    ]);
+            }
+
+            $session->login($request, $user);
+            RateLimiter::clear($throttleKey);
+
+            return redirect()->away($this->resolveIntendedPath($request));
+        }
 
         if ($user && $user->active !== false && $user->is_active !== false) {
             try {
-                $magicLoginUrl = $this->sendMagicLoginLink($user);
+                $magicLoginUrl = $this->sendMagicLoginLink($user, $request);
             } catch (TransportExceptionInterface $exception) {
                 Log::warning('Unable to send magic login email.', [
                     'user_id' => $user->id,
@@ -199,15 +225,26 @@ class AuthController extends Controller
     private function throttleKey(Request $request): string
     {
         $login = (string) ($request->input('login') ?? '');
+        $authMethod = $this->resolveAuthMethod($request);
 
-        return Str::lower($login).'|'.$request->ip().'|web';
+        return Str::lower($login).'|'.$request->ip().'|web|'.$authMethod;
     }
 
-    private function sendMagicLoginLink(User $user): string
+    private function resolveAuthMethod(Request $request): string
+    {
+        $authMethod = (string) ($request->input('auth_method') ?? 'magic_link');
+
+        return in_array($authMethod, ['magic_link', 'password'], true)
+            ? $authMethod
+            : 'magic_link';
+    }
+
+    private function sendMagicLoginLink(User $user, Request $request): string
     {
         $token = Str::random(64);
         $expiresInMinutes = 15;
         $expiresAt = now()->addMinutes($expiresInMinutes);
+        $rootUrl = $this->resolveSignedWebRootUrl($request);
 
         $this->deleteStaleLoginLinkTokens($user->id, 'web');
 
@@ -225,6 +262,7 @@ class AuthController extends Controller
                 'id' => $user->id,
                 'token' => $token,
             ],
+            $rootUrl,
         );
 
         $user->notify(new WebMagicLoginLinkNotification($url, $expiresInMinutes));
@@ -292,9 +330,14 @@ class AuthController extends Controller
     /**
      * @param  array<string, mixed>  $parameters
      */
-    private function signedWebUrl(string $routeName, \DateTimeInterface $expiration, array $parameters = []): string
+    private function signedWebUrl(
+        string $routeName,
+        \DateTimeInterface $expiration,
+        array $parameters = [],
+        ?string $rootUrl = null
+    ): string
     {
-        $rootUrl = rtrim((string) config('app.url'), '/');
+        $rootUrl = rtrim((string) ($rootUrl ?? config('app.url')), '/');
 
         $relativeUrl = URL::temporarySignedRoute(
             $routeName,
@@ -308,6 +351,18 @@ class AuthController extends Controller
         }
 
         return $rootUrl.$relativeUrl;
+    }
+
+    private function resolveSignedWebRootUrl(Request $request): string
+    {
+        $requestRoot = rtrim((string) $request->getSchemeAndHttpHost(), '/');
+        $requestHost = Str::lower((string) $request->getHost());
+
+        if ($requestRoot !== '' && ! in_array($requestHost, ['localhost', '127.0.0.1', '::1', '10.0.2.2'], true)) {
+            return $requestRoot;
+        }
+
+        return rtrim((string) config('app.url'), '/');
     }
 
     private function mobileMagicLinkUrl(int $userId, string $token, mixed $deviceName): string
@@ -337,11 +392,11 @@ class AuthController extends Controller
             return false;
         }
 
-        if ((string) config('mail.default') !== 'log') {
+        if (! (bool) env('APP_SHOW_MAGIC_LINK_PREVIEW', false)) {
             return false;
         }
 
-        return $this->isTrustedLocalPreviewHost($request);
+        return $this->isAllowedPreviewHost($request);
     }
 
     private function shouldShowLogMailerNotice(?Request $request = null): bool
@@ -351,7 +406,7 @@ class AuthController extends Controller
             && ! $this->shouldExposeMagicLinkPreview($request);
     }
 
-    private function isTrustedLocalPreviewHost(?Request $request = null): bool
+    private function isAllowedPreviewHost(?Request $request = null): bool
     {
         $host = Str::lower(trim((string) ($request?->getHost() ?? '')));
         if ($host === '') {
@@ -362,7 +417,16 @@ class AuthController extends Controller
             return true;
         }
 
+        if ($this->isPrivateIpv4Host($host)) {
+            return true;
+        }
+
         return str_ends_with($host, '.test');
+    }
+
+    private function isPrivateIpv4Host(string $host): bool
+    {
+        return preg_match('/^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})$/', $host) === 1;
     }
 
     private function relativePathFromUrl(string $url): string

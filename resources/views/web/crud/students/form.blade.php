@@ -70,6 +70,33 @@
             <input type="hidden" name="name" id="english_full_name" value="{{ $rawEnglishName }}">
             <input type="hidden" name="khmer_name" id="khmer_full_name" value="{{ $rawKhmerName }}">
 
+            @php
+                $selectedClassIdCreate = (string) old('class_id', '');
+                $classSelectOptionsCreate = collect($classOptions ?? []);
+            @endphp
+
+            <label>Class (optional)</label>
+            @if($classSelectOptionsCreate->isEmpty())
+                <p class="flash-error">No class options found for your account yet. You can assign class later.</p>
+                <input type="number" name="class_id" value="{{ $selectedClassIdCreate }}" placeholder="Enter class ID (optional)">
+            @else
+                <div class="searchable-select-wrap">
+                    <input type="text" class="searchable-select-search" placeholder="Search class..." data-select-search-for="class_id">
+                    <select id="class_id" name="class_id">
+                        <option value="">Assign later</option>
+                        @foreach($classSelectOptionsCreate as $option)
+                            <option value="{{ $option['id'] }}" {{ $selectedClassIdCreate === (string) $option['id'] ? 'selected' : '' }}>
+                                {{ $option['label'] }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+            @endif
+
+            <label>Enrollment Date (optional)</label>
+            <input type="date" name="enrollment_date" value="{{ old('enrollment_date', '') }}">
+            <p class="text-muted">If class is selected, system will create/update enrollment date automatically.</p>
+
             <p class="text-muted">{{ __('ui.user_form.student_assign_in_class') }}</p>
 
             <p class="text-muted">Student ID will be generated automatically.</p>
@@ -79,14 +106,17 @@
 
             <label>Email</label>
             <input type="email" name="email" value="{{ old('email', data_get($item, 'user.email', '')) }}" required>
-            <p class="text-muted">A login link will be sent to this email.</p>
+            <p class="text-muted">Students can sign in with email + password, or enter only email to receive a one-time sign-in link.</p>
+
+            <label>Password</label>
+            <input type="password" name="password" autocomplete="new-password" required>
 
             <label>Address</label>
             <input type="text" name="address" value="{{ old('address', data_get($item, 'user.address', '')) }}">
 
             <label>Profile Image Upload</label>
             <input type="file" name="image" accept="{{ \App\Support\ProfileImageStorage::acceptAttribute() }}">
-            <p class="text-muted">Supported: JPG, PNG, WEBP, AVIF, HEIC, HEIF. Max 10MB.</p>
+            <p class="text-muted">{{ __('ui.common.supported_image_hint', ['max_mb' => \App\Support\ProfileImageStorage::maxUploadMb()]) }}</p>
 
             <button type="submit" class="btn-space-top">Create</button>
 
@@ -159,6 +189,14 @@
                 </div>
             @endif
 
+            <label>Enrollment Date (optional)</label>
+            <input
+                type="date"
+                name="enrollment_date"
+                value="{{ old('enrollment_date', !empty($enrollment['enrollment_date'] ?? null) ? \Illuminate\Support\Carbon::parse($enrollment['enrollment_date'])->toDateString() : '') }}"
+            >
+            <p class="text-muted">This updates student enrollment date used by attendance tracking validation.</p>
+
             <label>Name</label>
             <input type="text" name="name" value="{{ old('name', $item['user']['name'] ?? '') }}" required>
 
@@ -176,7 +214,10 @@
 
             <label>Email</label>
             <input type="email" name="email" value="{{ old('email', $item['user']['email'] ?? '') }}" required>
-            <p class="text-muted">A login link will be sent to this email.</p>
+            <p class="text-muted">Students can sign in with email + password, or request a one-time sign-in link by email.</p>
+
+            <label>Password (optional)</label>
+            <input type="password" name="password" autocomplete="new-password">
 
             <label>Grade</label>
             <input type="text" name="grade" value="{{ old('grade', $item['grade'] ?? '') }}">
@@ -208,7 +249,7 @@
 
             <label>Profile Image Upload</label>
             <input type="file" name="image" accept="{{ \App\Support\ProfileImageStorage::acceptAttribute() }}">
-            <p class="text-muted">Supported: JPG, PNG, WEBP, AVIF, HEIC, HEIF. Max 10MB.</p>
+            <p class="text-muted">{{ __('ui.common.supported_image_hint', ['max_mb' => \App\Support\ProfileImageStorage::maxUploadMb()]) }}</p>
             @if($currentImage)
                 <img src="{{ $resolveImage($currentImage) }}" alt="Current student image" class="avatar-preview">
                 <label class="inline-check">

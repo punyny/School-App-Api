@@ -26,6 +26,7 @@ class ClassCrudController extends Controller
         'thursday',
         'friday',
         'saturday',
+        'sunday',
     ];
 
     public function index(Request $request, InternalApiClient $api): View|RedirectResponse
@@ -240,13 +241,17 @@ class ClassCrudController extends Controller
             'name' => ['required', 'string', 'max:50'],
             'grade_level' => ['nullable', 'string', 'max:50'],
             'room' => ['nullable', 'string', 'max:50'],
+            'study_days' => ['nullable', 'array', 'min:1'],
+            'study_days.*' => ['string', 'in:monday,tuesday,wednesday,thursday,friday,saturday,sunday', 'distinct'],
+            'study_time_start' => ['nullable', 'date_format:H:i'],
+            'study_time_end' => ['nullable', 'date_format:H:i'],
             'student_ids' => ['nullable', 'array'],
             'student_ids.*' => ['integer'],
             'teacher_assignments' => ['nullable', 'array'],
             'teacher_assignments.*.teacher_id' => ['nullable', 'integer'],
             'teacher_assignments.*.subject_id' => ['nullable', 'integer'],
             'timetable_rows' => ['nullable', 'array'],
-            'timetable_rows.*.day_of_week' => ['nullable', 'in:monday,tuesday,wednesday,thursday,friday,saturday'],
+            'timetable_rows.*.day_of_week' => ['nullable', 'in:monday,tuesday,wednesday,thursday,friday,saturday,sunday'],
             'timetable_rows.*.subject_id' => ['nullable', 'integer'],
             'timetable_rows.*.teacher_id' => ['nullable', 'integer'],
             'timetable_rows.*.time_start' => ['nullable', 'date_format:H:i'],
@@ -255,6 +260,28 @@ class ClassCrudController extends Controller
 
         if ($request->user()->role !== 'super-admin') {
             unset($payload['school_id']);
+        }
+
+        if (array_key_exists('study_days', $payload) && is_array($payload['study_days'])) {
+            $payload['study_days'] = collect($payload['study_days'])
+                ->map(fn ($day): string => strtolower(trim((string) $day)))
+                ->filter(fn (string $day): bool => $day !== '')
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        $hasStudyStart = ! empty($payload['study_time_start'] ?? null);
+        $hasStudyEnd = ! empty($payload['study_time_end'] ?? null);
+        if ($hasStudyStart xor $hasStudyEnd) {
+            throw ValidationException::withMessages([
+                'study_time_end' => ['Study start and end time must both be set together.'],
+            ]);
+        }
+        if ($hasStudyStart && $hasStudyEnd && (string) $payload['study_time_end'] <= (string) $payload['study_time_start']) {
+            throw ValidationException::withMessages([
+                'study_time_end' => ['Study end time must be after study start time.'],
+            ]);
         }
 
         $this->normalizeTeacherAssignments($payload['teacher_assignments'] ?? []);
@@ -270,7 +297,15 @@ class ClassCrudController extends Controller
     private function extractClassPayload(array $payload): array
     {
         return collect($payload)
-            ->only(['school_id', 'name', 'grade_level', 'room'])
+            ->only([
+                'school_id',
+                'name',
+                'grade_level',
+                'room',
+                'study_days',
+                'study_time_start',
+                'study_time_end',
+            ])
             ->all();
     }
 
@@ -655,7 +690,7 @@ class ClassCrudController extends Controller
 
                 if (! in_array($day, self::WEEK_DAYS, true)) {
                     throw ValidationException::withMessages([
-                        'timetable_rows.'.$index.'.day_of_week' => ['Please select day from Monday to Saturday.'],
+                        'timetable_rows.'.$index.'.day_of_week' => ['Please select day from Monday to Sunday.'],
                     ]);
                 }
 

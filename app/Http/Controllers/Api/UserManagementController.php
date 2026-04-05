@@ -86,7 +86,7 @@ class UserManagementController extends Controller
             'name' => ['required', 'string', 'max:100'],
             'admin_name' => ['nullable', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255'],
-            'password' => ['nullable', 'string', 'max:255', PasswordRule::defaults()],
+            'password' => ['required', 'string', 'max:255', PasswordRule::defaults()],
             'phone' => ['nullable', 'string', 'max:20'],
             'gender' => ['nullable', 'in:male,female,other'],
             'dob' => ['nullable', 'date'],
@@ -575,6 +575,40 @@ class UserManagementController extends Controller
         return response()->json([
             'message' => $message,
             'data' => $user->fresh()->load($this->userDetailRelations()),
+        ]);
+    }
+
+    public function changePassword(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('update', $user);
+
+        $authUser = $request->user();
+        if ($this->normalizedRole($authUser) !== 'super-admin') {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        $this->ensureUserAccessible($authUser, $user);
+
+        $payload = $request->validate([
+            'new_password' => ['required', 'confirmed', PasswordRule::defaults()],
+            'new_password_confirmation' => ['required', 'string'],
+        ]);
+
+        $passwordHash = Hash::make((string) $payload['new_password']);
+        $user->forceFill([
+            'password' => $passwordHash,
+            'password_hash' => $passwordHash,
+        ])->save();
+
+        // Invalidate existing sessions so the new password takes effect immediately.
+        $user->tokens()->delete();
+        DB::table('personal_access_tokens')
+            ->where('tokenable_type', User::class)
+            ->where('tokenable_id', $user->id)
+            ->delete();
+
+        return response()->json([
+            'message' => 'Password changed successfully.',
         ]);
     }
 

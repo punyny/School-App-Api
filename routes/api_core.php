@@ -88,6 +88,9 @@ Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin', 'admin.
         ->middleware('can:update,user');
     Route::patch('/users/{user}', [UserManagementController::class, 'update'])
         ->middleware('can:update,user');
+    Route::post('/users/{user}/change-password', [UserManagementController::class, 'changePassword'])
+        ->middleware('role:super-admin')
+        ->middleware('can:update,user');
     Route::post('/users/{user}/resend-verification-email', [UserManagementController::class, 'resendVerificationEmail'])
         ->middleware('can:update,user');
     Route::delete('/users/{user}', [UserManagementController::class, 'destroy'])
@@ -238,6 +241,11 @@ Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin,teacher,s
         ->middleware('can:delete,timetable');
     Route::get('/media', [MediaController::class, 'index']);
     Route::delete('/media/{media}', [MediaController::class, 'destroy']);
+});
+
+Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin,teacher', 'admin.ip'])->group(function (): void {
+    Route::get('/attendance/tracking-context', [AttendanceController::class, 'trackingContext'])
+        ->middleware('can:create,'.\App\Models\Attendance::class);
 });
 
 Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin,teacher,student,parent', 'admin.ip'])->group(function (): void {

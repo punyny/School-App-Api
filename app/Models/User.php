@@ -217,6 +217,38 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasOne(Teacher::class, 'user_id');
     }
 
+    public function routeNotificationForMail($notification = null): string
+    {
+        $email = trim((string) $this->email);
+        if ($email === '' || ! app()->environment('local')) {
+            return $email;
+        }
+
+        $suffix = trim((string) config('mail.self_alias_suffix'));
+        $sender = Str::lower(trim((string) config('mail.self_alias_sender', '')));
+        if ($suffix === '' || Str::lower($email) !== $sender) {
+            return $email;
+        }
+
+        [$localPart, $domain] = array_pad(explode('@', $email, 2), 2, '');
+        $normalizedDomain = Str::lower($domain);
+        if (
+            $localPart === '' ||
+            $domain === '' ||
+            str_contains($localPart, '+') ||
+            ! in_array($normalizedDomain, ['gmail.com', 'googlemail.com'], true)
+        ) {
+            return $email;
+        }
+
+        $normalizedSuffix = preg_replace('/[^a-z0-9_-]+/i', '', $suffix) ?? '';
+        if ($normalizedSuffix === '') {
+            return $email;
+        }
+
+        return $localPart.'+'.$normalizedSuffix.'@'.$domain;
+    }
+
     public function guardianProfile(): HasOne
     {
         return $this->hasOne(Guardian::class, 'user_id');

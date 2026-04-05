@@ -63,7 +63,7 @@ class StudentManagementController extends Controller
                 'max:255',
                 Rule::unique('users', 'email')->where(fn ($query) => $query->where('school_id', $schoolId)),
             ],
-            'password' => ['nullable', 'string', 'max:255', PasswordRule::defaults()],
+            'password' => ['required', 'string', 'max:255', PasswordRule::defaults()],
             'phone' => ['nullable', 'string', 'max:20'],
             'gender' => ['nullable', 'in:male,female,other'],
             'dob' => ['nullable', 'date'],

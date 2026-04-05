@@ -15,22 +15,36 @@ paths:
     post:
       tags: [Auth]
       security: []
-      summary: Login and receive Sanctum token
+      summary: Login with email/password or email access token and receive Sanctum token
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [email, password]
               properties:
+                login:
+                  type: string
+                  description: Email or username for password login
                 email:
                   type: string
                   format: email
+                  description: Email for password login
                 password:
                   type: string
+                  description: Password login option
+                id:
+                  type: integer
+                  description: User id for access-token login option
+                token:
+                  type: string
+                  description: Access token received from email magic-link
                 device_name:
                   type: string
+              oneOf:
+                - required: [email, password]
+                - required: [login, password]
+                - required: [id, token]
       responses:
         '200':
           description: Login successful

@@ -39,6 +39,60 @@ class MessageApiTest extends TestCase
             ->assertJsonFragment(['content' => 'Tomorrow bring your textbook.']);
     }
 
+    public function test_class_message_target_students_is_hidden_from_parent_feed(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $student = User::query()->where('email', 'student@example.com')->firstOrFail();
+        $parent = User::query()->where('email', 'parent@example.com')->firstOrFail();
+        $class = SchoolClass::query()->firstOrFail();
+
+        Sanctum::actingAs($teacher);
+        $this->postJson('/api/messages', [
+            'class_id' => $class->id,
+            'class_target' => 'students',
+            'content' => 'Students only update message',
+        ])->assertCreated();
+
+        Sanctum::actingAs($student);
+        $this->getJson('/api/messages')
+            ->assertOk()
+            ->assertJsonFragment(['content' => 'Students only update message']);
+
+        Sanctum::actingAs($parent);
+        $this->getJson('/api/messages')
+            ->assertOk()
+            ->assertJsonMissing(['content' => 'Students only update message']);
+    }
+
+    public function test_class_message_target_parents_is_hidden_from_student_feed(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $student = User::query()->where('email', 'student@example.com')->firstOrFail();
+        $parent = User::query()->where('email', 'parent@example.com')->firstOrFail();
+        $class = SchoolClass::query()->firstOrFail();
+
+        Sanctum::actingAs($teacher);
+        $this->postJson('/api/messages', [
+            'class_id' => $class->id,
+            'class_target' => 'parents',
+            'content' => 'Parents only update message',
+        ])->assertCreated();
+
+        Sanctum::actingAs($parent);
+        $this->getJson('/api/messages')
+            ->assertOk()
+            ->assertJsonFragment(['content' => 'Parents only update message']);
+
+        Sanctum::actingAs($student);
+        $this->getJson('/api/messages')
+            ->assertOk()
+            ->assertJsonMissing(['content' => 'Parents only update message']);
+    }
+
     public function test_student_can_reply_directly_to_teacher(): void
     {
         $this->seed();
@@ -73,6 +127,24 @@ class MessageApiTest extends TestCase
         $response->assertCreated()
             ->assertJsonPath('data.sender_id', $teacher->id)
             ->assertJsonPath('data.receiver_id', $parent->id);
+    }
+
+    public function test_teacher_can_send_direct_message_to_student_in_their_class_scope(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $student = User::query()->where('email', 'student@example.com')->firstOrFail();
+
+        Sanctum::actingAs($teacher);
+        $response = $this->postJson('/api/messages', [
+            'receiver_id' => $student->id,
+            'content' => 'Direct check from teacher to student.',
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.sender_id', $teacher->id)
+            ->assertJsonPath('data.receiver_id', $student->id);
     }
 
     public function test_parent_cannot_send_message(): void

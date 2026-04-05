@@ -581,7 +581,7 @@
 
             <label>Profile Image Upload</label>
             <input type="file" name="image" accept="{{ \App\Support\ProfileImageStorage::acceptAttribute() }}">
-            <p class="text-muted">Supported: JPG, PNG, WEBP, AVIF, HEIC, HEIF. Max 10MB.</p>
+            <p class="text-muted">{{ __('ui.common.supported_image_hint', ['max_mb' => \App\Support\ProfileImageStorage::maxUploadMb()]) }}</p>
             @if($currentImage)
                 <img src="{{ $resolveImage($currentImage) }}" alt="Current profile image" class="avatar-preview">
                 <label class="inline-check">
@@ -594,6 +594,22 @@
             <input type="text" name="image_url" value="{{ $currentImage }}" placeholder="/storage/profiles/example.jpg or https://...">
 
             <button type="submit" class="btn-space-top">Save Profile</button>
+        </form>
+
+        <form method="POST" action="{{ route('profile.change-password') }}" class="panel panel-form">
+            @csrf
+            <div class="panel-head">Change Password</div>
+
+            <p class="text-muted">Set a new password for your account. Current password is not required.</p>
+
+            <label>New Password</label>
+            <input type="password" name="new_password" autocomplete="new-password" required placeholder="Enter your new password">
+
+            <label>Confirm New Password</label>
+            <input type="password" name="new_password_confirmation" autocomplete="new-password" required placeholder="Re-enter your new password">
+
+            <p class="text-muted">Use at least 8 characters with uppercase, lowercase, number, and symbol. Other sessions will be logged out after update.</p>
+            <button type="submit" class="btn-space-top">Update Password</button>
         </form>
     </div>
 @endsection

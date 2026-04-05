@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\InteractsWithInternalApi;
 use App\Services\InternalApiClient;
+use App\Support\PasswordRule;
 use App\Support\ProfileImageStorage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -63,6 +64,7 @@ class StudentCrudController extends Controller
         return view('web.crud.students.form', [
             'mode' => 'create',
             'item' => null,
+            'enrollment' => null,
             'userRole' => $request->user()->role,
         ] + $this->loadAcademicSelectOptions($request, $api, true, false, false));
     }
@@ -70,13 +72,41 @@ class StudentCrudController extends Controller
     public function store(Request $request, InternalApiClient $api): RedirectResponse
     {
         $payload = $this->validatePayload($request, true);
+        $enrollmentDate = trim((string) Arr::pull($payload, 'enrollment_date', ''));
+        $requestedClassId = (int) ($payload['class_id'] ?? 0);
         $result = $api->post($request, '/api/students', $payload);
 
         if ($result['status'] !== 201) {
             return back()->withInput()->withErrors($this->extractErrors($result));
         }
 
-        return redirect()->away(route('panel.students.index', [], false))->with('success', 'Student created successfully.');
+        $messageParts = ['Student created successfully.'];
+        $student = is_array($result['data']['data'] ?? null) ? $result['data']['data'] : [];
+        $studentId = (int) ($student['id'] ?? 0);
+
+        if ($studentId > 0 && $requestedClassId > 0) {
+            $classUpdateResult = $api->put($request, '/api/students/'.$studentId, [
+                'class_id' => $requestedClassId,
+            ]);
+
+            if (($classUpdateResult['status'] ?? 0) === 200 && is_array($classUpdateResult['data']['data'] ?? null)) {
+                /** @var array<string, mixed> $student */
+                $student = $classUpdateResult['data']['data'];
+            } else {
+                $messageParts[] = 'Class assignment was not saved: '.$this->firstApiErrorMessage($classUpdateResult, 'Unknown API error.');
+            }
+        }
+
+        if ($enrollmentDate !== '') {
+            $syncMessage = $this->syncEnrollmentDate($request, $api, $student, $enrollmentDate);
+            if ($syncMessage !== null) {
+                $messageParts[] = $syncMessage;
+            }
+        }
+
+        return redirect()
+            ->away(route('panel.students.index', [], false))
+            ->with('success', implode(' ', $messageParts));
     }
 
     public function edit(Request $request, int $student, InternalApiClient $api): View|RedirectResponse
@@ -90,6 +120,7 @@ class StudentCrudController extends Controller
         return view('web.crud.students.form', [
             'mode' => 'edit',
             'item' => $result['data']['data'] ?? null,
+            'enrollment' => $this->fetchLatestEnrollmentForStudent($request, $api, $student),
             'userRole' => $request->user()->role,
         ] + $this->loadAcademicSelectOptions($request, $api, true, false, false));
     }
@@ -111,13 +142,25 @@ class StudentCrudController extends Controller
     public function update(Request $request, int $student, InternalApiClient $api): RedirectResponse
     {
         $payload = $this->validatePayload($request, false);
+        $enrollmentDate = trim((string) Arr::pull($payload, 'enrollment_date', ''));
         $result = $api->put($request, '/api/students/'.$student, $payload);
 
         if ($result['status'] !== 200) {
             return back()->withInput()->withErrors($this->extractErrors($result));
         }
 
-        return redirect()->away(route('panel.students.index', [], false))->with('success', 'Student updated successfully.');
+        $messageParts = ['Student updated successfully.'];
+        if ($enrollmentDate !== '') {
+            $studentItem = is_array($result['data']['data'] ?? null) ? $result['data']['data'] : [];
+            $syncMessage = $this->syncEnrollmentDate($request, $api, $studentItem, $enrollmentDate);
+            if ($syncMessage !== null) {
+                $messageParts[] = $syncMessage;
+            }
+        }
+
+        return redirect()
+            ->away(route('panel.students.index', [], false))
+            ->with('success', implode(' ', $messageParts));
     }
 
     public function destroy(Request $request, int $student, InternalApiClient $api): RedirectResponse
@@ -193,10 +236,20 @@ class StudentCrudController extends Controller
      */
     private function validatePayload(Request $request, bool $isCreate): array
     {
+        if (! $isCreate) {
+            $rawPassword = $request->input('password');
+            if (is_string($rawPassword) && trim($rawPassword) === '') {
+                $request->merge(['password' => null]);
+            }
+        }
+
         $studentIdRule = ['nullable', 'string', 'max:100'];
         $khmerNameRule = $isCreate
             ? ['required', 'string', 'max:255']
             : ['nullable', 'string', 'max:255'];
+        $passwordRule = $isCreate
+            ? ['required', 'string', 'max:255', PasswordRule::defaults()]
+            : ['nullable', 'string', 'max:255', PasswordRule::defaults()];
 
         $payload = $request->validate([
             'school_id' => ['nullable', 'integer'],
@@ -207,6 +260,7 @@ class StudentCrudController extends Controller
             'khmer_name' => $khmerNameRule,
             'name' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255'],
+            'password' => $passwordRule,
             'phone' => ['nullable', 'string', 'max:20'],
             'gender' => ['nullable', 'in:male,female,other'],
             'dob' => ['nullable', 'date'],
@@ -218,6 +272,7 @@ class StudentCrudController extends Controller
             'grade' => ['nullable', 'string', 'max:20'],
             'parent_name' => ['nullable', 'string', 'max:255'],
             'parent_ids' => ['nullable', 'string'],
+            'enrollment_date' => ['nullable', 'date'],
         ]);
 
         if (($payload['remove_image'] ?? false) === true) {
@@ -245,5 +300,175 @@ class StudentCrudController extends Controller
         }
 
         return $payload;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function fetchLatestEnrollmentForStudent(
+        Request $request,
+        InternalApiClient $api,
+        int $studentId
+    ): ?array {
+        if ($studentId <= 0) {
+            return null;
+        }
+
+        $result = $api->get($request, '/api/enrollments', [
+            'student_id' => $studentId,
+            'per_page' => 100,
+        ]);
+
+        if (($result['status'] ?? 0) !== 200) {
+            return null;
+        }
+
+        $rows = $result['data']['data'] ?? null;
+        if (! is_array($rows) || $rows === []) {
+            return null;
+        }
+
+        $first = $rows[0] ?? null;
+        if (! is_array($first)) {
+            return null;
+        }
+
+        return $first;
+    }
+
+    /**
+     * Returns a human-readable message when sync failed, otherwise null.
+     *
+     * @param  array<string, mixed>  $student
+     */
+    private function syncEnrollmentDate(
+        Request $request,
+        InternalApiClient $api,
+        array $student,
+        string $enrollmentDate
+    ): ?string {
+        $studentId = (int) ($student['id'] ?? 0);
+        if ($studentId <= 0) {
+            return 'Enrollment date was not saved because student information is incomplete.';
+        }
+
+        $classId = (int) ($student['class_id'] ?? 0);
+        if ($classId <= 0) {
+            return 'Enrollment date was not saved because this student has no class assigned yet.';
+        }
+
+        $existing = $this->fetchLatestEnrollmentForStudent($request, $api, $studentId);
+        if ($existing !== null) {
+            $enrollmentId = (int) ($existing['enrollment_id'] ?? $existing['id'] ?? 0);
+            if ($enrollmentId <= 0) {
+                return 'Enrollment date was not saved because enrollment id is missing.';
+            }
+
+            $academicYearId = (int) ($existing['academic_year_id'] ?? 0);
+            $sectionId = $this->resolveSectionIdForEnrollment($request, $api, $classId, $academicYearId);
+
+            $updatePayload = [
+                'class_id' => $classId,
+                'enrollment_date' => $enrollmentDate,
+            ];
+            if ($sectionId > 0) {
+                $updatePayload['section_id'] = $sectionId;
+            }
+
+            $updateResult = $api->patch($request, '/api/enrollments/'.$enrollmentId, $updatePayload);
+            if (($updateResult['status'] ?? 0) === 200) {
+                return null;
+            }
+
+            return 'Enrollment date was not saved: '.$this->firstApiErrorMessage($updateResult, 'Unknown API error.');
+        }
+
+        $academicYearId = $this->resolveCurrentAcademicYearId($request, $api);
+        if ($academicYearId <= 0) {
+            return 'Enrollment date was not saved because no academic year is available.';
+        }
+
+        $sectionId = $this->resolveSectionIdForEnrollment($request, $api, $classId, $academicYearId);
+        if ($sectionId <= 0) {
+            return 'Enrollment date was not saved because no section is available for this class.';
+        }
+
+        $createResult = $api->post($request, '/api/enrollments', [
+            'student_id' => $studentId,
+            'academic_year_id' => $academicYearId,
+            'class_id' => $classId,
+            'section_id' => $sectionId,
+            'enrollment_date' => $enrollmentDate,
+            'status' => 'Enrolled',
+        ]);
+
+        if (($createResult['status'] ?? 0) === 201) {
+            return null;
+        }
+
+        return 'Enrollment date was not saved: '.$this->firstApiErrorMessage($createResult, 'Unknown API error.');
+    }
+
+    private function resolveCurrentAcademicYearId(Request $request, InternalApiClient $api): int
+    {
+        $currentResult = $api->get($request, '/api/academic-years', [
+            'is_current' => 1,
+            'per_page' => 1,
+        ]);
+
+        $rows = $currentResult['data']['data'] ?? null;
+        if (is_array($rows) && isset($rows[0]) && is_array($rows[0])) {
+            return (int) ($rows[0]['academic_year_id'] ?? 0);
+        }
+
+        $fallbackResult = $api->get($request, '/api/academic-years', ['per_page' => 1]);
+        $fallbackRows = $fallbackResult['data']['data'] ?? null;
+        if (is_array($fallbackRows) && isset($fallbackRows[0]) && is_array($fallbackRows[0])) {
+            return (int) ($fallbackRows[0]['academic_year_id'] ?? 0);
+        }
+
+        return 0;
+    }
+
+    private function resolveSectionIdForEnrollment(
+        Request $request,
+        InternalApiClient $api,
+        int $classId,
+        int $academicYearId
+    ): int {
+        if ($classId <= 0) {
+            return 0;
+        }
+
+        $query = [
+            'class_id' => $classId,
+            'per_page' => 100,
+        ];
+        if ($academicYearId > 0) {
+            $query['academic_year_id'] = $academicYearId;
+        }
+
+        $result = $api->get($request, '/api/sections', $query);
+        $rows = $result['data']['data'] ?? null;
+        if (is_array($rows) && isset($rows[0]) && is_array($rows[0])) {
+            return (int) ($rows[0]['section_id'] ?? 0);
+        }
+
+        return 0;
+    }
+
+    /**
+     * @param  array{status:int, data:array<string,mixed>|null}  $result
+     */
+    private function firstApiErrorMessage(array $result, string $fallback): string
+    {
+        $errors = $this->extractErrors($result);
+        foreach ($errors as $fieldMessages) {
+            if ($fieldMessages !== [] && isset($fieldMessages[0]) && $fieldMessages[0] !== '') {
+                return (string) $fieldMessages[0];
+            }
+        }
+
+        return $fallback;
     }
 }

@@ -15,7 +15,7 @@
 cp .env.example .env
 php artisan key:generate
 php artisan migrate --seed
-php artisan serve
+php -d upload_max_filesize=20M -d post_max_size=20M artisan serve
 ```
 
 ### Local Dev Helper
@@ -24,7 +24,7 @@ Use this helper when developing on your Mac:
 
 ```bash
 ./scripts/dev/use-local-mode.sh
-php artisan serve --host=0.0.0.0 --port=8001
+php -d upload_max_filesize=20M -d post_max_size=20M artisan serve --host=0.0.0.0 --port=8001
 ```
 
 Default local URL:

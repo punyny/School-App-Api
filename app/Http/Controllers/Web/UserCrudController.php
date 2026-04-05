@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\InteractsWithInternalApi;
 use App\Models\User;
 use App\Services\InternalApiClient;
+use App\Support\PasswordRule;
 use App\Support\ProfileImageStorage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -261,6 +262,17 @@ class UserCrudController extends Controller
      */
     private function validatePayload(Request $request, bool $isCreate): array
     {
+        if (! $isCreate) {
+            $rawPassword = $request->input('password');
+            if (is_string($rawPassword) && trim($rawPassword) === '') {
+                $request->merge(['password' => null]);
+            }
+        }
+
+        $passwordRules = $isCreate
+            ? ['required', 'string', 'max:255', PasswordRule::defaults()]
+            : ['nullable', 'string', 'max:255', PasswordRule::defaults()];
+
         $roleOptions = $this->allowedRolesFor($request->user());
 
         $payload = $request->validate([
@@ -274,6 +286,7 @@ class UserCrudController extends Controller
             'name' => ['nullable', 'string', 'max:100'],
             'admin_name' => ['nullable', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255'],
+            'password' => $passwordRules,
             'phone' => ['nullable', 'string', 'max:20'],
             'gender' => ['nullable', 'in:male,female,other'],
             'dob' => ['nullable', 'date'],

@@ -145,7 +145,15 @@
 
         <label>{{ __('ui.user_form.email') }}</label>
         <input type="email" name="email" value="{{ old('email', $item['email'] ?? '') }}" required>
-        <p class="text-muted" style="margin:8px 0 12px;">A login link will be sent to this email.</p>
+        <p class="text-muted" style="margin:8px 0 12px;">Users can sign in with email + password, or enter only email to receive a one-time sign-in link.</p>
+
+        <label>{{ $mode === 'create' ? __('ui.user_form.password') : __('ui.user_form.password_optional') }}</label>
+        <input
+            type="password"
+            name="password"
+            autocomplete="new-password"
+            {{ $mode === 'create' ? 'required' : '' }}
+        >
 
         <label>{{ __('ui.user_form.phone') }}</label>
         <input type="text" name="phone" id="phone-field" value="{{ old('phone', $item['phone'] ?? '') }}">
@@ -171,7 +179,7 @@
 
             <label>{{ __('ui.user_form.profile_image_upload') }}</label>
             <input type="file" name="image" accept="{{ \App\Support\ProfileImageStorage::acceptAttribute() }}">
-            <p class="text-muted">{{ __('ui.common.supported_image_hint') }}</p>
+            <p class="text-muted">{{ __('ui.common.supported_image_hint', ['max_mb' => \App\Support\ProfileImageStorage::maxUploadMb()]) }}</p>
             @if($currentImage)
                 <img src="{{ $resolveImage($currentImage) }}" alt="Current profile image" class="avatar-preview">
                 <label class="inline-check">

@@ -78,6 +78,23 @@ class StudentManagementApiTest extends TestCase
         ]);
     }
 
+    public function test_admin_cannot_create_student_without_password(): void
+    {
+        $this->seed();
+
+        $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $token = $admin->createToken('phpunit')->plainTextToken;
+
+        $response = $this->withToken($token)->postJson('/api/students', [
+            'name' => 'No Password Student',
+            'email' => 'no.password.student@example.com',
+            'grade' => '7',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['password']);
+    }
+
     public function test_admin_can_register_student_before_assigning_class(): void
     {
         $this->seed();
@@ -114,6 +131,7 @@ class StudentManagementApiTest extends TestCase
         $response = $this->withToken($token)->postJson('/api/students', [
             'name' => 'Auto ID Student',
             'email' => 'auto.id.student@example.com',
+            'password' => 'password123',
             'grade' => '7',
         ]);
 

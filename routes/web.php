@@ -63,6 +63,7 @@ Route::middleware(['auth', 'verified', 'role:super-admin,admin,teacher,student,p
     ->group(function (): void {
         Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
         Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+        Route::post('/profile/change-password', [ProfileController::class, 'changePassword'])->name('profile.change-password');
     });
 
 Route::prefix('super-admin')
@@ -134,11 +135,13 @@ Route::prefix('panel/announcements')
 
 Route::prefix('panel/schools')
     ->name('panel.schools.')
-    ->middleware(['auth', 'verified', 'role:super-admin', 'admin.ip', 'can:web-manage-schools'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-schools'])
     ->group(function (): void {
         Route::get('/', [SchoolCrudController::class, 'index'])->name('index');
         Route::get('/create', [SchoolCrudController::class, 'create'])->name('create');
         Route::post('/', [SchoolCrudController::class, 'store'])->name('store');
+        Route::get('/enrollment-date', [SchoolCrudController::class, 'enrollmentDate'])->name('enrollment-date');
+        Route::put('/enrollment-date', [SchoolCrudController::class, 'updateEnrollmentDate'])->name('enrollment-date.update');
         Route::get('/{school}/edit', [SchoolCrudController::class, 'edit'])->name('edit');
         Route::put('/{school}', [SchoolCrudController::class, 'update'])->name('update');
         Route::delete('/{school}', [SchoolCrudController::class, 'destroy'])->name('destroy');

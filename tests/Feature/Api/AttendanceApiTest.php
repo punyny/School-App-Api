@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\Subject;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -25,6 +26,15 @@ class AttendanceApiTest extends TestCase
         $student = Student::query()->where('class_id', (int) $assignment->class_id)->firstOrFail();
         $subjectId = (int) $assignment->subject_id;
         $token = $teacher->createToken('phpunit')->plainTextToken;
+        $this->prepareStudentAndSessionForDate(
+            student: $student,
+            classId: (int) $assignment->class_id,
+            subjectId: $subjectId,
+            teacherId: (int) $teacher->id,
+            date: '2026-03-21',
+            timeStart: '08:00:00',
+            timeEnd: '09:00:00',
+        );
 
         $response = $this->withToken($token)->postJson('/api/attendance', [
             'student_id' => $student->id,
@@ -107,6 +117,15 @@ class AttendanceApiTest extends TestCase
         $this->assertCount(1, $students);
 
         $token = $teacher->createToken('phpunit')->plainTextToken;
+        $this->prepareStudentAndSessionForDate(
+            student: $students[0],
+            classId: (int) $assignment->class_id,
+            subjectId: $subjectId,
+            teacherId: (int) $teacher->id,
+            date: '2026-03-12',
+            timeStart: '07:00:00',
+            timeEnd: '07:30:00',
+        );
 
         $payload = [
             'class_id' => (int) $assignment->class_id,
@@ -335,5 +354,42 @@ class AttendanceApiTest extends TestCase
             ->assertJsonPath('data.date_to', '2032-06-30')
             ->assertJsonCount(1, 'data.absence_rows')
             ->assertJsonPath('data.absence_rows.0.remarks', 'Absent in semester 1');
+    }
+
+    private function prepareStudentAndSessionForDate(
+        Student $student,
+        int $classId,
+        int $subjectId,
+        int $teacherId,
+        string $date,
+        string $timeStart,
+        string $timeEnd,
+    ): void {
+        $dayOfWeek = strtolower(Carbon::parse($date)->format('l'));
+
+        $student->forceFill([
+            'admission_date' => '2020-01-01',
+        ])->save();
+
+        SchoolClass::query()->whereKey($classId)->update([
+            'study_days' => json_encode([$dayOfWeek], JSON_THROW_ON_ERROR),
+            'study_time_start' => '06:00:00',
+            'study_time_end' => '18:00:00',
+        ]);
+
+        DB::table('timetables')->updateOrInsert(
+            [
+                'class_id' => $classId,
+                'subject_id' => $subjectId,
+                'teacher_id' => $teacherId,
+                'day_of_week' => $dayOfWeek,
+                'time_start' => $timeStart,
+                'time_end' => $timeEnd,
+            ],
+            [
+                'updated_at' => now(),
+                'created_at' => now(),
+            ]
+        );
     }
 }

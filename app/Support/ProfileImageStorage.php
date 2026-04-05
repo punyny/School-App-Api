@@ -12,7 +12,20 @@ use Illuminate\Support\Str;
 
 class ProfileImageStorage
 {
-    public const MAX_UPLOAD_KB = 10240;
+    public const DEFAULT_MAX_UPLOAD_KB = 10240;
+
+    public static function maxUploadKb(): int
+    {
+        return max(1, (int) config('uploads.profile_image_max_kb', self::DEFAULT_MAX_UPLOAD_KB));
+    }
+
+    public static function maxUploadMb(): string
+    {
+        $mb = static::maxUploadKb() / 1024;
+        $formatted = number_format($mb, 2, '.', '');
+
+        return rtrim(rtrim($formatted, '0'), '.');
+    }
 
     /**
      * @return array<int, string>
@@ -24,7 +37,7 @@ class ProfileImageStorage
             'file',
             'mimetypes:image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif',
             'mimes:jpg,jpeg,png,webp,avif,heic,heif',
-            'max:'.self::MAX_UPLOAD_KB,
+            'max:'.static::maxUploadKb(),
         ];
     }
 

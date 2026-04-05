@@ -10,8 +10,10 @@ use App\Notifications\WebMagicLoginLinkNotification;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -26,7 +28,9 @@ class WebRoleAccessTest extends TestCase
 
         $response->assertOk()
             ->assertSee('Sala Digital Web Portal')
-            ->assertSee('Send Web Login Link');
+            ->assertSee('Email')
+            ->assertSee('Email + Password')
+            ->assertSee('Send Access Token Link');
     }
 
     public function test_locale_switch_changes_login_page_to_khmer(): void
@@ -60,6 +64,77 @@ class WebRoleAccessTest extends TestCase
         $response->assertSessionHas('debug_magic_login_email', 'teacher@example.com');
 
         Notification::assertSentTo($teacher, WebMagicLoginLinkNotification::class);
+    }
+
+    public function test_login_request_uses_request_host_for_magic_link_url(): void
+    {
+        $this->seed();
+        config()->set('app.url', 'http://stale-host.test');
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        Notification::fake();
+
+        $response = $this
+            ->withServerVariables([
+                'HTTP_HOST' => '192.168.1.13:8001',
+                'HTTPS' => 'off',
+            ])
+            ->from('http://192.168.1.13:8001/login')
+            ->post('http://192.168.1.13:8001/login', [
+                'login' => 'teacher@example.com',
+            ]);
+
+        $response->assertRedirect('/login');
+
+        Notification::assertSentTo($teacher, WebMagicLoginLinkNotification::class, function (WebMagicLoginLinkNotification $notification): bool {
+            return str_starts_with($notification->loginUrl(), 'http://192.168.1.13:8001/login/magic/');
+        });
+    }
+
+    public function test_login_request_requires_email_not_username(): void
+    {
+        $this->seed();
+        Notification::fake();
+
+        $response = $this->from('/login')->post('/login', [
+            'login' => 'teacher',
+        ]);
+
+        $response->assertRedirect('/login');
+        $response->assertSessionHasErrors('login');
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_user_can_login_with_email_and_password_from_web_form(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+
+        $response = $this->from('/login')->post('/login', [
+            'auth_method' => 'password',
+            'login' => 'teacher@example.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertRedirect('/dashboard');
+        $this->assertAuthenticatedAs($teacher->fresh());
+    }
+
+    public function test_password_login_fails_with_invalid_credentials(): void
+    {
+        $this->seed();
+
+        $response = $this->from('/login')->post('/login', [
+            'auth_method' => 'password',
+            'login' => 'teacher@example.com',
+            'password' => 'wrong-password',
+        ]);
+
+        $response->assertRedirect('/login');
+        $response->assertSessionHasErrors('login');
+        $this->assertGuest();
     }
 
     public function test_user_can_login_from_magic_link_and_get_verified(): void
@@ -422,6 +497,7 @@ class WebRoleAccessTest extends TestCase
             'student_id' => 'WEB-STU-001',
             'khmer_name' => 'សិស្សរូបភាព',
             'email' => 'web-image-student@example.com',
+            'password' => 'password123',
             'grade' => '7',
             'image' => UploadedFile::fake()->image('student.png')->size(4096),
         ]);
@@ -456,6 +532,45 @@ class WebRoleAccessTest extends TestCase
         $this->assertSame('Teacher Web Image', $teacher->name);
         $this->assertNotNull($teacher->image_url);
         $this->assertStringStartsWith('/storage/profiles/', (string) $teacher->image_url);
+    }
+
+    public function test_user_can_change_password_from_profile_page(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $this->actingAs($teacher);
+
+        $response = $this->from('/profile')->post('/profile/change-password', [
+            'new_password' => 'NewPassword123!',
+            'new_password_confirmation' => 'NewPassword123!',
+        ]);
+
+        $response->assertRedirect('/profile');
+        $response->assertSessionHas('success', 'Password changed successfully.');
+
+        $teacher->refresh();
+        $this->assertTrue(Hash::check('NewPassword123!', (string) $teacher->password));
+        $this->assertTrue(Hash::check('NewPassword123!', (string) $teacher->password_hash));
+    }
+
+    public function test_user_cannot_change_password_when_confirmation_does_not_match(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $this->actingAs($teacher);
+
+        $response = $this->from('/profile')->post('/profile/change-password', [
+            'new_password' => 'NewPassword123!',
+            'new_password_confirmation' => 'DifferentPassword123!',
+        ]);
+
+        $response->assertRedirect('/profile');
+        $response->assertSessionHasErrors('new_password');
+
+        $teacher->refresh();
+        $this->assertTrue(Hash::check('password123', (string) $teacher->password));
     }
 
     public function test_teacher_profile_page_shows_class_timetable_and_students_sections(): void
@@ -599,6 +714,7 @@ class WebRoleAccessTest extends TestCase
             'role' => 'parent',
             'name' => 'Restored As Parent',
             'email' => 'deleted.teacher.web@example.com',
+            'password' => 'password123',
             'phone' => '098877665',
             'active' => '1',
         ]);
@@ -653,6 +769,7 @@ class WebRoleAccessTest extends TestCase
 
         $response->assertOk()
             ->assertSee('Class assignment is done from Create/Edit Class page.')
+            ->assertSee('name="password"', false)
             ->assertDontSee('Assign later');
     }
 
@@ -666,6 +783,7 @@ class WebRoleAccessTest extends TestCase
         $response = $this->get('/panel/users/create');
 
         $response->assertOk()
+            ->assertSee('name="password"', false)
             ->assertDontSee('value="super-admin"', false)
             ->assertDontSee('value="admin"', false);
     }
@@ -740,6 +858,31 @@ class WebRoleAccessTest extends TestCase
             ->get();
 
         $this->assertCount(1, $students);
+        $students[0]->forceFill([
+            'admission_date' => '2020-01-01',
+        ])->save();
+
+        $dayOfWeek = strtolower(Carbon::parse('2026-03-14')->format('l'));
+        SchoolClass::query()->whereKey((int) $assignment->class_id)->update([
+            'study_days' => json_encode([$dayOfWeek], JSON_THROW_ON_ERROR),
+            'study_time_start' => '06:00:00',
+            'study_time_end' => '18:00:00',
+        ]);
+
+        DB::table('timetables')->updateOrInsert(
+            [
+                'class_id' => (int) $assignment->class_id,
+                'subject_id' => (int) $assignment->subject_id,
+                'teacher_id' => (int) $teacher->id,
+                'day_of_week' => $dayOfWeek,
+                'time_start' => '07:00:00',
+                'time_end' => '07:30:00',
+            ],
+            [
+                'updated_at' => now(),
+                'created_at' => now(),
+            ]
+        );
 
         $this->actingAs($teacher);
 

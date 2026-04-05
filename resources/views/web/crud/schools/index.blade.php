@@ -6,9 +6,9 @@
 
     <div class="nav">
         <a href="{{ route('dashboard') }}">Dashboard</a>
-        @can('web-manage-schools')
+        @if((auth()->user()->role ?? '') === 'super-admin')
         <a href="{{ route('panel.schools.create') }}" class="active">+ Create School</a>
-        @endcan
+        @endif
         
     </div>
 
@@ -55,15 +55,17 @@
                     <td>{{ $item['subjects_count'] ?? '-' }}</td>
                     <td>
                         @can('web-manage-schools')
-                        <a href="{{ route('super-admin.schools.manage', $item['id']) }}">Manage</a>
-                        
+                        <a href="{{ route('panel.schools.enrollment-date', ['school_id' => $item['id']]) }}">Enrollment Date</a>
                         <a href="{{ route('panel.schools.edit', $item['id']) }}">Edit</a>
-                        
+
+                        @if((auth()->user()->role ?? '') === 'super-admin')
+                        <a href="{{ route('super-admin.schools.manage', $item['id']) }}">Manage</a>
                         <form action="{{ route('panel.schools.destroy', $item['id']) }}" method="POST" class="inline-form" onsubmit="return confirm('Delete this school?')">
                             @csrf
                             @method('DELETE')
                             <button type="submit">Delete</button>
                         </form>
+                        @endif
                         @endcan
                         
                     </td>

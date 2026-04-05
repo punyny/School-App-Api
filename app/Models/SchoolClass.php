@@ -20,7 +20,17 @@ class SchoolClass extends Model
         'grade_level',
         'room',
         'school_id',
+        'study_days',
+        'study_time_start',
+        'study_time_end',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'study_days' => 'array',
+        ];
+    }
 
     public function school(): BelongsTo
     {

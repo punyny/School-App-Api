@@ -12,6 +12,7 @@ class Message extends Model
         'sender_id',
         'receiver_id',
         'class_id',
+        'class_target',
         'content',
         'date',
     ];

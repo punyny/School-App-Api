@@ -13,6 +13,7 @@ class SchoolController extends Controller
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', School::class);
+        $user = $request->user();
 
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:255'],
@@ -30,6 +31,10 @@ class SchoolController extends Controller
                     ->orWhere('school_code', 'like', "%{$search}%")
                     ->orWhere('location', 'like', "%{$search}%");
             });
+        }
+
+        if ($user && $user->role === 'admin') {
+            $query->whereKey((int) ($user->school_id ?? 0));
         }
 
         return response()->json($query->paginate($filters['per_page'] ?? 20));
@@ -53,8 +58,17 @@ class SchoolController extends Controller
             'school_code' => ['nullable', 'string', 'max:100', Rule::unique('schools', 'school_code')],
             'location' => ['nullable', 'string', 'max:255'],
             'config_details' => ['nullable'],
+            'default_enrollment_date' => ['nullable', 'date'],
         ]);
-        $payload['config_details'] = $this->normalizeConfigDetails($payload['config_details'] ?? null);
+        $configDetails = $this->normalizeConfigDetails($payload['config_details'] ?? null);
+        $configDetails = $this->mergeDefaultEnrollmentDateIntoConfig(
+            $configDetails,
+            $payload['default_enrollment_date'] ?? null,
+            array_key_exists('default_enrollment_date', $payload)
+        );
+
+        $payload['config_details'] = $configDetails;
+        unset($payload['default_enrollment_date']);
 
         $school = School::query()->create($payload);
 
@@ -73,10 +87,25 @@ class SchoolController extends Controller
             'school_code' => ['sometimes', 'nullable', 'string', 'max:100', Rule::unique('schools', 'school_code')->ignore($school->id)],
             'location' => ['sometimes', 'nullable', 'string', 'max:255'],
             'config_details' => ['sometimes', 'nullable'],
+            'default_enrollment_date' => ['sometimes', 'nullable', 'date'],
         ]);
-        if (array_key_exists('config_details', $payload)) {
-            $payload['config_details'] = $this->normalizeConfigDetails($payload['config_details']);
+        if (array_key_exists('config_details', $payload) || array_key_exists('default_enrollment_date', $payload)) {
+            $existingConfig = $school->config_details;
+            if (! is_array($existingConfig)) {
+                $existingConfig = [];
+            }
+
+            $incomingConfig = array_key_exists('config_details', $payload)
+                ? $this->normalizeConfigDetails($payload['config_details'])
+                : $existingConfig;
+
+            $payload['config_details'] = $this->mergeDefaultEnrollmentDateIntoConfig(
+                $incomingConfig,
+                $payload['default_enrollment_date'] ?? null,
+                array_key_exists('default_enrollment_date', $payload)
+            );
         }
+        unset($payload['default_enrollment_date']);
 
         $school->fill($payload)->save();
 
@@ -119,5 +148,30 @@ class SchoolController extends Controller
         return [
             'notes' => $rawValue,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return array<string, mixed>
+     */
+    private function mergeDefaultEnrollmentDateIntoConfig(
+        array $config,
+        mixed $defaultEnrollmentDate,
+        bool $shouldApply
+    ): array {
+        if (! $shouldApply) {
+            return $config;
+        }
+
+        $dateValue = trim((string) ($defaultEnrollmentDate ?? ''));
+        if ($dateValue === '') {
+            unset($config['default_enrollment_date']);
+
+            return $config;
+        }
+
+        $config['default_enrollment_date'] = $dateValue;
+
+        return $config;
     }
 }

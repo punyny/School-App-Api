@@ -115,4 +115,19 @@ return [
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Local Self-Delivery Alias
+    |--------------------------------------------------------------------------
+    |
+    | In local development, Gmail may hide or thread messages oddly when the
+    | authenticated sender and recipient are the same mailbox. When configured,
+    | notifications sent to that same mailbox are rerouted to a Gmail plus
+    | alias, which still lands in the same inbox but is easier to spot.
+    |
+    */
+
+    'self_alias_suffix' => env('MAIL_SELF_ALIAS_SUFFIX'),
+    'self_alias_sender' => env('MAIL_SELF_ALIAS_SENDER', env('MAIL_USERNAME', env('MAIL_FROM_ADDRESS'))),
+
 ];

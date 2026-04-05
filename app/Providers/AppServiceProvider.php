@@ -97,7 +97,7 @@ class AppServiceProvider extends ServiceProvider
             fn (User $user): bool => $inRoles($user, ['super-admin', 'admin'])
         );
 
-        Gate::define('web-manage-schools', fn (User $user): bool => $isRole($user, 'super-admin'));
+        Gate::define('web-manage-schools', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin']));
         Gate::define('web-manage-users', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin']));
         Gate::define('web-manage-classes', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin']));
         Gate::define('web-manage-subjects', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin']));

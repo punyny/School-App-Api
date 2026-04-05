@@ -22,7 +22,7 @@ use Illuminate\Validation\ValidationException;
 class MessageController extends Controller
 {
     /**
-     * @var array<int, array<int, int>>
+     * @var array<string, array<int, int>>
      */
     private array $classRecipientCache = [];
 
@@ -102,6 +102,9 @@ class MessageController extends Controller
             'sender_id' => $user->id,
             'receiver_id' => $payload['receiver_id'] ?? null,
             'class_id' => $payload['class_id'] ?? null,
+            'class_target' => ($payload['class_id'] ?? null)
+                ? $this->normalizeClassTarget($payload['class_target'] ?? null)
+                : null,
             'content' => $payload['content'],
             'date' => $payload['date'] ?? now(),
         ]);
@@ -135,6 +138,7 @@ class MessageController extends Controller
         $payload = $request->validate([
             'receiver_id' => ['nullable', 'integer', 'exists:users,id'],
             'class_id' => ['nullable', 'integer', 'exists:classes,id'],
+            'class_target' => ['nullable', 'string', 'in:students,parents,students_parents'],
             'content' => ['required', 'string'],
             'date' => ['nullable', 'date'],
         ]);
@@ -152,6 +156,9 @@ class MessageController extends Controller
         $message->fill([
             'receiver_id' => $payload['receiver_id'] ?? null,
             'class_id' => $payload['class_id'] ?? null,
+            'class_target' => ($payload['class_id'] ?? null)
+                ? $this->normalizeClassTarget($payload['class_target'] ?? null)
+                : null,
             'content' => $payload['content'],
             'date' => $payload['date'] ?? $message->date,
         ])->save();
@@ -214,7 +221,13 @@ class MessageController extends Controller
                 $scope->where('sender_id', $user->id)
                     ->orWhere('receiver_id', $user->id);
                 if ($classId) {
-                    $scope->orWhere('class_id', $classId);
+                    $scope->orWhere(function (Builder $classScope) use ($classId): void {
+                        $classScope->where('class_id', $classId)
+                            ->where(function (Builder $targetScope): void {
+                                $targetScope->whereNull('class_target')
+                                    ->orWhereIn('class_target', ['students', 'students_parents']);
+                            });
+                    });
                 }
             });
 
@@ -227,7 +240,13 @@ class MessageController extends Controller
                 $scope->where('sender_id', $user->id)
                     ->orWhere('receiver_id', $user->id);
                 if ($classIds !== []) {
-                    $scope->orWhereIn('class_id', $classIds);
+                    $scope->orWhere(function (Builder $classScope) use ($classIds): void {
+                        $classScope->whereIn('class_id', $classIds)
+                            ->where(function (Builder $targetScope): void {
+                                $targetScope->whereNull('class_target')
+                                    ->orWhereIn('class_target', ['parents', 'students_parents']);
+                            });
+                    });
                 }
             });
 
@@ -281,15 +300,11 @@ class MessageController extends Controller
             return true;
         }
 
-        if (! $user->school_id || (int) $target->school_id !== (int) $user->school_id) {
-            return false;
-        }
-
-        if ($actorRole === 'admin') {
-            return in_array($targetRole, ['teacher', 'student', 'parent'], true);
-        }
-
         if ($actorRole === 'teacher') {
+            if (! $user->school_id) {
+                return false;
+            }
+
             $teacherClassIds = $user->teachingClasses()->pluck('classes.id')->all();
             if ($teacherClassIds === []) {
                 return false;
@@ -297,8 +312,13 @@ class MessageController extends Controller
 
             if ($targetRole === 'student') {
                 $studentClassId = $this->studentClassIdByUser($targetUserId);
+                if ($studentClassId === null || ! in_array($studentClassId, $teacherClassIds, true)) {
+                    return false;
+                }
 
-                return $studentClassId !== null && in_array($studentClassId, $teacherClassIds, true);
+                $studentClass = SchoolClass::query()->find($studentClassId);
+
+                return $studentClass && (int) $studentClass->school_id === (int) $user->school_id;
             }
 
             if ($targetRole === 'parent') {
@@ -306,6 +326,14 @@ class MessageController extends Controller
             }
 
             return false;
+        }
+
+        if (! $user->school_id || (int) $target->school_id !== (int) $user->school_id) {
+            return false;
+        }
+
+        if ($actorRole === 'admin') {
+            return in_array($targetRole, ['teacher', 'student', 'parent'], true);
         }
 
         if ($actorRole === 'student') {
@@ -472,26 +500,15 @@ class MessageController extends Controller
             return [];
         }
 
-        if (isset($this->classRecipientCache[$classId])) {
-            return $this->classRecipientCache[$classId];
+        $target = $this->normalizeClassTarget((string) ($message->class_target ?? ''));
+        $cacheKey = $classId.'|'.$target;
+
+        if (isset($this->classRecipientCache[$cacheKey])) {
+            return $this->classRecipientCache[$cacheKey];
         }
 
-        $studentUserIds = Student::query()
-            ->where('class_id', $classId)
-            ->pluck('user_id')
-            ->filter()
-            ->map(fn ($id): int => (int) $id)
-            ->all();
-
-        $parentIds = DB::table('parent_child')
-            ->join('students', 'students.id', '=', 'parent_child.student_id')
-            ->where('students.class_id', $classId)
-            ->pluck('parent_child.parent_id')
-            ->map(fn ($id): int => (int) $id)
-            ->all();
-
-        $recipientIds = array_values(array_unique(array_filter([...$studentUserIds, ...$parentIds])));
-        $this->classRecipientCache[$classId] = $recipientIds;
+        $recipientIds = $this->resolveClassRecipientIds($classId, $target);
+        $this->classRecipientCache[$cacheKey] = $recipientIds;
 
         return $recipientIds;
     }
@@ -505,19 +522,9 @@ class MessageController extends Controller
         }
 
         if ($message->class_id) {
-            $studentUserIds = Student::query()
-                ->where('class_id', $message->class_id)
-                ->pluck('user_id')
-                ->filter()
-                ->all();
-
-            $parentIds = DB::table('parent_child')
-                ->join('students', 'students.id', '=', 'parent_child.student_id')
-                ->where('students.class_id', $message->class_id)
-                ->pluck('parent_child.parent_id')
-                ->all();
-
-            $recipientIds = [...$recipientIds, ...$studentUserIds, ...$parentIds];
+            $classTarget = $this->normalizeClassTarget((string) ($message->class_target ?? ''));
+            $classRecipients = $this->resolveClassRecipientIds((int) $message->class_id, $classTarget);
+            $recipientIds = [...$recipientIds, ...$classRecipients];
         }
 
         $recipientIds = array_values(array_unique(array_filter($recipientIds)));
@@ -560,6 +567,46 @@ class MessageController extends Controller
         $value = strtolower(trim($role));
 
         return $value === 'guardian' ? 'parent' : $value;
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function resolveClassRecipientIds(int $classId, string $target): array
+    {
+        $studentUserIds = Student::query()
+            ->where('class_id', $classId)
+            ->pluck('user_id')
+            ->filter()
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+
+        $parentIds = DB::table('parent_child')
+            ->join('students', 'students.id', '=', 'parent_child.student_id')
+            ->where('students.class_id', $classId)
+            ->pluck('parent_child.parent_id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+
+        $audience = $this->normalizeClassTarget($target);
+        $recipientIds = match ($audience) {
+            'students' => $studentUserIds,
+            'parents' => $parentIds,
+            default => [...$studentUserIds, ...$parentIds],
+        };
+
+        return array_values(array_unique(array_filter($recipientIds)));
+    }
+
+    private function normalizeClassTarget(?string $target): string
+    {
+        $value = strtolower(trim((string) $target));
+
+        if (in_array($value, ['students', 'parents', 'students_parents'], true)) {
+            return $value;
+        }
+
+        return 'students_parents';
     }
 
     private function studentClassIdByUser(int $userId): ?int
