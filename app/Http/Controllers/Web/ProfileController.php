@@ -7,6 +7,7 @@ use App\Http\Controllers\Web\Concerns\InteractsWithInternalApi;
 use App\Services\InternalApiClient;
 use App\Support\PasswordRule;
 use App\Support\ProfileImageStorage;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -30,6 +31,27 @@ class ProfileController extends Controller
             'userData' => $userData,
             'insights' => $this->buildRoleInsights($request, $api, $userData),
         ]);
+    }
+
+    public function generateTelegramLinkCode(Request $request, InternalApiClient $api): JsonResponse
+    {
+        $result = $api->post($request, '/api/integrations/telegram/link-code');
+        $status = (int) ($result['status'] ?? 500);
+        $data = is_array($result['data'] ?? null) ? $result['data'] : [];
+
+        if ($status < 200 || $status >= 300) {
+            return response()->json([
+                'ok' => false,
+                'message' => (string) ($data['message'] ?? 'Unable to generate Telegram link code.'),
+                'errors' => $data['errors'] ?? null,
+            ], $status >= 400 ? $status : 500);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'message' => (string) ($data['message'] ?? 'Telegram link code generated.'),
+            'data' => is_array($data['data'] ?? null) ? $data['data'] : null,
+        ], $status);
     }
 
     public function update(Request $request, InternalApiClient $api): RedirectResponse

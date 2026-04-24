@@ -88,6 +88,7 @@ class UserManagementController extends Controller
             'email' => ['required', 'email', 'max:255'],
             'password' => ['required', 'string', 'max:255', PasswordRule::defaults()],
             'phone' => ['nullable', 'string', 'max:20'],
+            'telegram_chat_id' => ['nullable', 'string', 'max:64'],
             'gender' => ['nullable', 'in:male,female,other'],
             'dob' => ['nullable', 'date'],
             'address' => ['nullable', 'string', 'max:255'],
@@ -261,6 +262,7 @@ class UserManagementController extends Controller
                 'password' => $passwordHash,
                 'password_hash' => $passwordHash,
                 'phone' => $payload['phone'] ?? null,
+                'telegram_chat_id' => $payload['telegram_chat_id'] ?? null,
                 'gender' => $payload['gender'] ?? null,
                 'dob' => $payload['dob'] ?? null,
                 'address' => $payload['address'] ?? null,
@@ -350,6 +352,7 @@ class UserManagementController extends Controller
             'email' => ['nullable', 'email', 'max:255'],
             'password' => ['nullable', 'string', 'max:255', PasswordRule::defaults()],
             'phone' => ['nullable', 'string', 'max:20'],
+            'telegram_chat_id' => ['nullable', 'string', 'max:64'],
             'gender' => ['nullable', 'in:male,female,other'],
             'dob' => ['nullable', 'date'],
             'address' => ['nullable', 'string', 'max:255'],
@@ -487,7 +490,7 @@ class UserManagementController extends Controller
 
         DB::transaction(function () use ($user, $payload, $targetRole, $targetSchoolId, $classId, $parentIds, $childIds, $studentCode, $candidateUserCode, $emailChanged): void {
             $updates = [];
-            foreach (['username', 'user_code', 'first_name', 'last_name', 'khmer_name', 'name', 'email', 'phone', 'gender', 'dob', 'address', 'bio', 'image_url', 'active', 'is_active'] as $field) {
+            foreach (['username', 'user_code', 'first_name', 'last_name', 'khmer_name', 'name', 'email', 'phone', 'telegram_chat_id', 'gender', 'dob', 'address', 'bio', 'image_url', 'active', 'is_active'] as $field) {
                 if (array_key_exists($field, $payload)) {
                     $updates[$field] = $payload[$field];
                 }
@@ -825,6 +828,7 @@ class UserManagementController extends Controller
                 $lastName = $this->csvValue($row, ['last_name', 'last name']);
                 $khmerName = $this->csvValue($row, ['khmer_name', 'khmer name', 'name_kh', 'kh_name']);
                 $phone = $this->csvValue($row, ['phone', 'phone_number', 'phone number']);
+                $telegramChatId = $this->csvValue($row, ['telegram_chat_id', 'telegram chat id', 'telegram']);
                 $email = $this->csvValue($row, ['email', 'e-mail']);
 
                 if ($email === '') {
@@ -879,6 +883,7 @@ class UserManagementController extends Controller
                     $name,
                     $email,
                     $phone,
+                    $telegramChatId,
                     $gender,
                     $dob,
                     $hasPassword,
@@ -946,6 +951,7 @@ class UserManagementController extends Controller
                             'name' => $name,
                             'email' => $email,
                             'phone' => $phone !== '' ? $phone : null,
+                            'telegram_chat_id' => $telegramChatId !== '' ? $telegramChatId : null,
                             'gender' => $gender,
                             'dob' => $dob,
                             'password' => $storedPasswordHash,
@@ -974,6 +980,7 @@ class UserManagementController extends Controller
                             'name' => $name,
                             'email' => $email,
                             'phone' => $phone !== '' ? $phone : $user->phone,
+                            'telegram_chat_id' => $telegramChatId !== '' ? $telegramChatId : $user->telegram_chat_id,
                             'gender' => $gender ?? $user->gender,
                             'dob' => $dob ?? $user->dob,
                             'school_id' => $rowSchoolId,

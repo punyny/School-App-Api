@@ -53,7 +53,7 @@ class AnnouncementPolicy
 
     public function create(User $user): bool
     {
-        return in_array($user->role, ['super-admin', 'admin'], true);
+        return in_array($user->role, ['super-admin', 'admin', 'teacher'], true);
     }
 
     public function update(User $user, Announcement $announcement): bool
@@ -64,6 +64,23 @@ class AnnouncementPolicy
 
         if ($user->role !== 'admin') {
             return false;
+        }
+
+        if ($user->role === 'teacher') {
+            if ((int) ($user->school_id ?? 0) !== (int) $announcement->school_id) {
+                return false;
+            }
+
+            if ((int) ($announcement->posted_by ?? 0) !== (int) $user->id) {
+                return false;
+            }
+
+            $classId = (int) ($announcement->class_id ?? 0);
+            if ($classId <= 0) {
+                return false;
+            }
+
+            return $user->teachingClasses()->where('classes.id', $classId)->exists();
         }
 
         if ((int) $user->school_id !== (int) $announcement->school_id) {
@@ -81,6 +98,10 @@ class AnnouncementPolicy
 
         if ($user->role === 'admin') {
             return (int) $user->school_id === (int) $announcement->school_id;
+        }
+
+        if ($user->role === 'teacher') {
+            return $this->update($user, $announcement);
         }
 
         return false;

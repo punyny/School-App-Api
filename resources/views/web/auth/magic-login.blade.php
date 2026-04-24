@@ -105,6 +105,8 @@
     </style>
 </head>
 <body>
+    <div id="web-react-shell-root" data-shell="guest"></div>
+    <div id="web-legacy-content">
     <main class="card">
         <div class="brand">
             <img src="{{ asset('sala-digital-mark.svg') }}" alt="Sala Digital">
@@ -132,5 +134,7 @@
             <a href="{{ route('login') }}" class="button button-secondary">Back to login</a>
         </div>
     </main>
+    </div>
+    @vite('resources/js/react-web-shell.jsx')
 </body>
 </html>

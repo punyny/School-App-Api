@@ -67,7 +67,7 @@ class MediaController extends Controller
             return;
         }
 
-        if (in_array($user->role, ['admin', 'teacher'], true) && $user->school_id) {
+        if ($user->role === 'admin' && $user->school_id) {
             $query->where('school_id', (int) $user->school_id);
 
             return;
@@ -82,7 +82,7 @@ class MediaController extends Controller
             return true;
         }
 
-        return in_array($user->role, ['admin', 'teacher'], true)
+        return $user->role === 'admin'
             && $user->school_id !== null
             && (int) $user->school_id === (int) $media->school_id;
     }

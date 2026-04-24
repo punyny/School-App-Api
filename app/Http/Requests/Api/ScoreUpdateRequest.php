@@ -27,7 +27,7 @@ class ScoreUpdateRequest extends FormRequest
             'class_id' => ['sometimes', 'integer', 'exists:classes,id'],
             'exam_score' => ['sometimes', 'numeric', 'min:0', 'max:1000'],
             'total_score' => ['sometimes', 'numeric', 'min:0', 'max:1000'],
-            'assessment_type' => ['nullable', 'in:monthly,semester,yearly'],
+            'assessment_type' => ['nullable', 'in:monthly,semester'],
             'month' => ['nullable', 'integer', 'between:1,12'],
             'semester' => ['nullable', 'integer', 'between:1,2'],
             'academic_year' => ['nullable', 'string', 'max:20'],

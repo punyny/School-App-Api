@@ -83,6 +83,16 @@ class TeacherController extends Controller
                 ],
                 [
                     'number' => 2,
+                    'title' => 'Student List',
+                    'description' => 'Browse student profiles and class assignments in your school.',
+                    'metric_label' => 'Students',
+                    'metric_value' => $studentCount,
+                    'links' => [
+                        ['label' => 'Open Students', 'url' => route('panel.students.index')],
+                    ],
+                ],
+                [
+                    'number' => 3,
                     'title' => 'Approve or Reject Attendance Requests',
                     'description' => 'Review leave/attendance requests sent by students or parents.',
                     'metric_label' => 'Pending Requests',
@@ -93,7 +103,7 @@ class TeacherController extends Controller
                     ],
                 ],
                 [
-                    'number' => 3,
+                    'number' => 4,
                     'title' => 'Attendance Tracking (My Classes)',
                     'description' => 'Track attendance by class and subject for your assigned students.',
                     'metric_label' => 'Attendance Records',
@@ -104,7 +114,7 @@ class TeacherController extends Controller
                     ],
                 ],
                 [
-                    'number' => 4,
+                    'number' => 5,
                     'title' => 'Homework To My Class',
                     'description' => 'Create homework and monitor assignment volume for your classes.',
                     'metric_label' => 'Homework Items',
@@ -115,7 +125,7 @@ class TeacherController extends Controller
                     ],
                 ],
                 [
-                    'number' => 5,
+                    'number' => 6,
                     'title' => 'View Messages From Student or Parent',
                     'description' => 'Read incoming communication and reply directly.',
                     'metric_label' => 'Message Threads',
@@ -126,18 +136,17 @@ class TeacherController extends Controller
                     ],
                 ],
                 [
-                    'number' => 6,
-                    'title' => 'Notifications (View & Send)',
-                    'description' => 'Send notices such as "Today we have no class" to students/parents.',
+                    'number' => 7,
+                    'title' => 'Notifications (View Only)',
+                    'description' => 'View your notification inbox and monitor unread notices.',
                     'metric_label' => 'Unread Notifications',
                     'metric_value' => $unreadNotificationCount,
                     'links' => [
                         ['label' => 'Notification Inbox', 'url' => route('panel.notifications.index')],
-                        ['label' => 'Create Notification', 'url' => route('panel.notifications.create')],
                     ],
                 ],
                 [
-                    'number' => 7,
+                    'number' => 8,
                     'title' => 'Incident Report To Parent',
                     'description' => 'Record behavior incidents and share reports with families.',
                     'metric_label' => 'Incident Reports',

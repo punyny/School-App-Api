@@ -9,19 +9,27 @@ use App\Models\Attendance;
 use App\Models\Enrollment;
 use App\Models\SchoolClass;
 use App\Models\Student;
+use App\Models\SubstituteTeacherAssignment;
 use App\Models\Subject;
 use App\Models\Timetable;
 use App\Models\User;
+use App\Services\AttendanceTelegramNotifier;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AttendanceController extends Controller
 {
+    public function __construct(
+        private readonly AttendanceTelegramNotifier $attendanceTelegramNotifier,
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Attendance::class);
@@ -290,8 +298,73 @@ class AttendanceController extends Controller
         $studyDays = $this->resolveClassStudyDays($class);
         $isStudyDay = in_array($dayOfWeek, $studyDays, true);
 
-        $sessionRows = collect($class->timetables ?? [])
-            ->filter(fn (Timetable $row): bool => $this->canManageSubject($user, $classId, (int) $row->subject_id))
+        $timetableSessionRows = collect($class->timetables ?? [])
+            ->map(function (Timetable $row): array {
+                return [
+                    'timetable_id' => (int) $row->id,
+                    'substitute_assignment_id' => null,
+                    'subject_id' => (int) $row->subject_id,
+                    'subject_name' => (string) ($row->subject?->name ?? 'Subject'),
+                    'teacher_id' => (int) ($row->teacher_id ?? 0),
+                    'teacher_name' => (string) ($row->teacher?->name ?? 'Teacher'),
+                    'original_teacher_id' => (int) ($row->teacher_id ?? 0),
+                    'original_teacher_name' => (string) ($row->teacher?->name ?? 'Teacher'),
+                    'time_start' => (string) $row->time_start,
+                    'time_end' => (string) $row->time_end,
+                    'is_substitute' => false,
+                    'notes' => null,
+                ];
+            })
+            ->values();
+
+        $substituteSessionRows = collect();
+        if ($user->role === 'teacher') {
+            $substituteSessionRows = SubstituteTeacherAssignment::query()
+                ->with([
+                    'subject:id,name',
+                    'substituteTeacher:id,name',
+                    'originalTeacher:id,name',
+                ])
+                ->where('class_id', $classId)
+                ->where('substitute_teacher_id', (int) $user->id)
+                ->whereDate('date', $date)
+                ->orderBy('time_start')
+                ->get()
+                ->map(function (SubstituteTeacherAssignment $assignment): array {
+                    return [
+                        'timetable_id' => null,
+                        'substitute_assignment_id' => (int) $assignment->id,
+                        'subject_id' => (int) $assignment->subject_id,
+                        'subject_name' => (string) ($assignment->subject?->name ?? 'Subject'),
+                        'teacher_id' => (int) $assignment->substitute_teacher_id,
+                        'teacher_name' => (string) ($assignment->substituteTeacher?->name ?? 'Teacher'),
+                        'original_teacher_id' => (int) $assignment->original_teacher_id,
+                        'original_teacher_name' => (string) ($assignment->originalTeacher?->name ?? 'Teacher'),
+                        'time_start' => (string) $assignment->time_start,
+                        'time_end' => (string) $assignment->time_end,
+                        'is_substitute' => true,
+                        'notes' => $assignment->notes ? (string) $assignment->notes : null,
+                    ];
+                })
+                ->values();
+        }
+
+        $sessionRows = $substituteSessionRows
+            ->merge($timetableSessionRows)
+            ->filter(fn (array $row): bool => $this->canTrackSession(
+                user: $user,
+                classId: $classId,
+                subjectId: (int) ($row['subject_id'] ?? 0),
+                date: $date,
+                timeStart: (string) ($row['time_start'] ?? ''),
+                timeEnd: isset($row['time_end']) ? (string) $row['time_end'] : null,
+            ))
+            ->sortBy('time_start')
+            ->unique(fn (array $row): string => implode('|', [
+                (int) ($row['subject_id'] ?? 0),
+                (string) ($row['time_start'] ?? ''),
+                (string) ($row['time_end'] ?? ''),
+            ]))
             ->values();
 
         $studentIds = collect($class->students ?? [])->pluck('id')->map(fn ($id): int => (int) $id)->filter()->unique()->values()->all();
@@ -324,15 +397,22 @@ class AttendanceController extends Controller
             $eligibleStudents[] = $entry;
         }
 
-        $sessions = $sessionRows->map(function (Timetable $row): array {
+        $sessions = $sessionRows->map(function (array $row): array {
             return [
-                'timetable_id' => (int) $row->id,
-                'subject_id' => (int) $row->subject_id,
-                'subject_name' => (string) ($row->subject?->name ?? 'Subject'),
-                'teacher_id' => (int) ($row->teacher_id ?? 0),
-                'teacher_name' => (string) ($row->teacher?->name ?? 'Teacher'),
-                'time_start' => substr((string) $row->time_start, 0, 5),
-                'time_end' => substr((string) $row->time_end, 0, 5),
+                'timetable_id' => isset($row['timetable_id']) ? (int) $row['timetable_id'] : null,
+                'substitute_assignment_id' => isset($row['substitute_assignment_id'])
+                    ? (int) $row['substitute_assignment_id']
+                    : null,
+                'subject_id' => (int) ($row['subject_id'] ?? 0),
+                'subject_name' => (string) ($row['subject_name'] ?? 'Subject'),
+                'teacher_id' => (int) ($row['teacher_id'] ?? 0),
+                'teacher_name' => (string) ($row['teacher_name'] ?? 'Teacher'),
+                'original_teacher_id' => (int) ($row['original_teacher_id'] ?? 0),
+                'original_teacher_name' => (string) ($row['original_teacher_name'] ?? ''),
+                'time_start' => substr((string) ($row['time_start'] ?? ''), 0, 5),
+                'time_end' => substr((string) ($row['time_end'] ?? ''), 0, 5),
+                'is_substitute' => (bool) ($row['is_substitute'] ?? false),
+                'notes' => isset($row['notes']) ? (string) $row['notes'] : null,
             ];
         })->values()->all();
 
@@ -365,16 +445,18 @@ class AttendanceController extends Controller
         $user = $request->user();
         $payload = $request->validated();
 
-        if (! $this->canManageClass($user, (int) $payload['class_id'])) {
-            return response()->json(['message' => 'Forbidden.'], 403);
-        }
+        $subjectId = isset($payload['subject_id']) ? (int) $payload['subject_id'] : null;
+        $this->ensureAttendanceWritePermission(
+            user: $user,
+            classId: (int) $payload['class_id'],
+            subjectId: $subjectId,
+            date: (string) $payload['date'],
+            timeStart: (string) $payload['time_start'],
+            timeEnd: isset($payload['time_end']) ? (string) $payload['time_end'] : null,
+        );
 
         $this->ensureStudentBelongsToClass((int) $payload['student_id'], (int) $payload['class_id']);
-        $this->ensureSubjectBelongsToClass((int) $payload['class_id'], isset($payload['subject_id']) ? (int) $payload['subject_id'] : null);
-
-        if (! $this->canManageSubject($user, (int) $payload['class_id'], isset($payload['subject_id']) ? (int) $payload['subject_id'] : null)) {
-            return response()->json(['message' => 'Forbidden.'], 403);
-        }
+        $this->ensureSubjectBelongsToClass((int) $payload['class_id'], $subjectId);
 
         $payload = $this->normalizeAttendancePayload($payload);
         $this->ensureStudentEnrollmentDate((int) $payload['student_id'], (int) $payload['class_id'], (string) $payload['date']);
@@ -400,6 +482,11 @@ class AttendanceController extends Controller
         }
 
         $attendance = Attendance::query()->create($payload);
+        $this->attendanceTelegramNotifier->sendToStudentParents(
+            attendance: $attendance,
+            actor: $user,
+            eventType: 'created',
+        );
 
         return response()->json([
             'message' => 'Attendance created.',
@@ -425,17 +512,17 @@ class AttendanceController extends Controller
 
         $user = $request->user();
         $classId = (int) $payload['class_id'];
-
-        if (! $this->canManageClass($user, $classId)) {
-            return response()->json(['message' => 'Forbidden.'], 403);
-        }
-
         $subjectId = isset($payload['subject_id']) ? (int) $payload['subject_id'] : null;
-        $this->ensureSubjectBelongsToClass($classId, $subjectId);
+        $this->ensureAttendanceWritePermission(
+            user: $user,
+            classId: $classId,
+            subjectId: $subjectId,
+            date: (string) $payload['date'],
+            timeStart: (string) $payload['time_start'],
+            timeEnd: isset($payload['time_end']) ? (string) $payload['time_end'] : null,
+        );
 
-        if (! $this->canManageSubject($user, $classId, $subjectId)) {
-            return response()->json(['message' => 'Forbidden.'], 403);
-        }
+        $this->ensureSubjectBelongsToClass($classId, $subjectId);
 
         $basePayload = $this->normalizeAttendancePayload([
             'class_id' => $classId,
@@ -488,8 +575,21 @@ class AttendanceController extends Controller
 
             if ($attendance->wasRecentlyCreated) {
                 $created++;
+                $this->attendanceTelegramNotifier->sendToStudentParents(
+                    attendance: $attendance,
+                    actor: $user,
+                    eventType: 'created',
+                );
             } else {
                 $updated++;
+
+                if ($attendance->wasChanged(['status', 'remarks', 'time_end'])) {
+                    $this->attendanceTelegramNotifier->sendToStudentParents(
+                        attendance: $attendance,
+                        actor: $user,
+                        eventType: 'updated',
+                    );
+                }
             }
 
             $savedRecords[] = $attendance->fresh()->load(['student.user', 'class', 'subject']);
@@ -517,17 +617,24 @@ class AttendanceController extends Controller
         $targetSubjectId = array_key_exists('subject_id', $payload)
             ? (isset($payload['subject_id']) ? (int) $payload['subject_id'] : null)
             : ($attendance->subject_id ? (int) $attendance->subject_id : null);
+        $targetDate = (string) ($payload['date'] ?? $attendance->date);
+        $targetTimeStart = (string) ($payload['time_start'] ?? substr((string) $attendance->time_start, 0, 5));
+        $targetTimeEnd = array_key_exists('time_end', $payload)
+            ? (isset($payload['time_end']) && $payload['time_end'] !== '' ? (string) $payload['time_end'] : null)
+            : ((string) ($attendance->time_end ? substr((string) $attendance->time_end, 0, 5) : ''));
+        $targetTimeEnd = $targetTimeEnd !== '' ? $targetTimeEnd : null;
 
-        if (! $this->canManageClass($user, $targetClassId)) {
-            return response()->json(['message' => 'Forbidden.'], 403);
-        }
+        $this->ensureAttendanceWritePermission(
+            user: $user,
+            classId: $targetClassId,
+            subjectId: $targetSubjectId,
+            date: $targetDate,
+            timeStart: $targetTimeStart,
+            timeEnd: $targetTimeEnd,
+        );
 
         $this->ensureStudentBelongsToClass($targetStudentId, $targetClassId);
         $this->ensureSubjectBelongsToClass($targetClassId, $targetSubjectId);
-
-        if (! $this->canManageSubject($user, $targetClassId, $targetSubjectId)) {
-            return response()->json(['message' => 'Forbidden.'], 403);
-        }
 
         $payload = $this->normalizeAttendancePayload($payload);
         $merged = array_merge($attendance->only(['student_id', 'class_id', 'subject_id', 'date', 'time_start']), $payload);
@@ -554,6 +661,13 @@ class AttendanceController extends Controller
         }
 
         $attendance->fill($payload)->save();
+        if ($attendance->wasChanged(['status', 'remarks', 'time_start', 'time_end', 'date', 'subject_id'])) {
+            $this->attendanceTelegramNotifier->sendToStudentParents(
+                attendance: $attendance->fresh(),
+                actor: $user,
+                eventType: 'updated',
+            );
+        }
 
         return response()->json([
             'message' => 'Attendance updated.',
@@ -687,6 +801,12 @@ class AttendanceController extends Controller
     {
         $this->authorize('create', Attendance::class);
 
+        if ($request->user()->role === 'teacher') {
+            throw ValidationException::withMessages([
+                'role' => ['Teachers cannot import attendance via CSV.'],
+            ]);
+        }
+
         $payload = $request->validate([
             'file' => ['required', 'file', 'mimes:csv,txt'],
         ]);
@@ -741,12 +861,6 @@ class AttendanceController extends Controller
                 }
 
                 $this->ensureSubjectBelongsToClass((int) $record['class_id'], isset($record['subject_id']) ? (int) $record['subject_id'] : null);
-
-                if (! $this->canManageSubject($request->user(), (int) $record['class_id'], isset($record['subject_id']) ? (int) $record['subject_id'] : null)) {
-                    throw ValidationException::withMessages([
-                        'subject_id' => ['You cannot import attendance for this class subject.'],
-                    ]);
-                }
 
                 $this->ensureStudentBelongsToClass((int) $record['student_id'], (int) $record['class_id']);
                 $this->ensureStudentEnrollmentDate((int) $record['student_id'], (int) $record['class_id'], (string) $record['date']);
@@ -977,11 +1091,74 @@ class AttendanceController extends Controller
         }
 
         if ($user->role === 'teacher') {
-            $classIds = $user->teachingClasses()->pluck('classes.id')->all();
-            $subjectIds = $user->teachingClasses()->pluck('teacher_class.subject_id')->filter()->all();
+            $directPairs = DB::table('teacher_class')
+                ->where('teacher_id', $user->id)
+                ->select('class_id', 'subject_id')
+                ->get()
+                ->map(fn ($row): array => [
+                    'class_id' => (int) ($row->class_id ?? 0),
+                    'subject_id' => (int) ($row->subject_id ?? 0),
+                ]);
 
-            $query->whereIn('class_id', $classIds === [] ? [-1] : $classIds)
-                ->whereIn('subject_id', $subjectIds === [] ? [-1] : $subjectIds);
+            $timetablePairs = Timetable::query()
+                ->where('teacher_id', $user->id)
+                ->select('class_id', 'subject_id')
+                ->distinct()
+                ->get()
+                ->map(fn (Timetable $row): array => [
+                    'class_id' => (int) $row->class_id,
+                    'subject_id' => (int) $row->subject_id,
+                ]);
+
+            $pairs = $directPairs
+                ->merge($timetablePairs)
+                ->filter(fn (array $pair): bool => $pair['class_id'] > 0 && $pair['subject_id'] > 0)
+                ->unique(fn (array $pair): string => $pair['class_id'].'-'.$pair['subject_id'])
+                ->values()
+                ->all();
+            $attendanceTable = Attendance::query()->getModel()->getTable();
+
+            $query->where(function (Builder $scope) use ($pairs, $user, $attendanceTable): void {
+                $hasCondition = false;
+
+                if ($pairs !== []) {
+                    $scope->where(function (Builder $pairScope) use ($pairs): void {
+                        foreach ($pairs as $index => $pair) {
+                            $method = $index === 0 ? 'where' : 'orWhere';
+                            $pairScope->{$method}(function (Builder $pairQuery) use ($pair): void {
+                                $pairQuery
+                                    ->where('class_id', (int) $pair['class_id'])
+                                    ->where('subject_id', (int) $pair['subject_id']);
+                            });
+                        }
+                    });
+
+                    $hasCondition = true;
+                }
+
+                $substituteVisibilityScope = function ($substituteScope) use ($user, $attendanceTable): void {
+                    $substituteScope->whereExists(function ($subQuery) use ($user, $attendanceTable): void {
+                        $subQuery->selectRaw('1')
+                            ->from('substitute_teacher_assignments as sta')
+                            ->whereColumn('sta.class_id', $attendanceTable.'.class_id')
+                            ->whereColumn('sta.subject_id', $attendanceTable.'.subject_id')
+                            ->whereColumn('sta.date', $attendanceTable.'.date')
+                            ->whereRaw('sta.time_start <= '.$attendanceTable.'.time_start')
+                            ->whereRaw('sta.time_end >= COALESCE('.$attendanceTable.'.time_end, '.$attendanceTable.'.time_start)')
+                            ->where(function ($teacherScope) use ($user): void {
+                                $teacherScope
+                                    ->where('sta.substitute_teacher_id', (int) $user->id)
+                                    ->orWhere('sta.original_teacher_id', (int) $user->id);
+                            });
+                    });
+                };
+
+                if ($hasCondition) {
+                    $scope->orWhere($substituteVisibilityScope);
+                } else {
+                    $scope->where($substituteVisibilityScope);
+                }
+            });
         }
     }
 
@@ -1018,7 +1195,28 @@ class AttendanceController extends Controller
         }
 
         if ($user->role === 'teacher') {
-            return $user->teachingClasses()->where('classes.id', $classId)->exists();
+            $hasDirectClass = $user->teachingClasses()->where('classes.id', $classId)->exists();
+            if ($hasDirectClass) {
+                return true;
+            }
+
+            $hasTimetableClass = Timetable::query()
+                ->where('class_id', $classId)
+                ->where('teacher_id', $user->id)
+                ->exists();
+
+            if ($hasTimetableClass) {
+                return true;
+            }
+
+            return SubstituteTeacherAssignment::query()
+                ->where('class_id', $classId)
+                ->where(function (Builder $scope) use ($user): void {
+                    $scope
+                        ->where('substitute_teacher_id', (int) $user->id)
+                        ->orWhere('original_teacher_id', (int) $user->id);
+                })
+                ->exists();
         }
 
         return true;
@@ -1031,7 +1229,7 @@ class AttendanceController extends Controller
         }
 
         if (! $subjectId) {
-            return true;
+            return false;
         }
 
         if ($user->role === 'super-admin' || $user->role === 'admin') {
@@ -1042,10 +1240,218 @@ class AttendanceController extends Controller
             return false;
         }
 
+        return $this->teacherHasClassSubjectAssignment(
+            user: $user,
+            classId: $classId,
+            subjectId: $subjectId,
+        );
+    }
+
+    private function ensureAttendanceWritePermission(
+        User $user,
+        int $classId,
+        ?int $subjectId,
+        string $date,
+        string $timeStart,
+        ?string $timeEnd,
+    ): void {
+        if (! $this->canManageClass($user, $classId)) {
+            throw new AuthorizationException('Forbidden.');
+        }
+
+        if ($user->role === 'super-admin' || $user->role === 'admin') {
+            return;
+        }
+
+        if ($user->role !== 'teacher') {
+            throw new AuthorizationException('Forbidden.');
+        }
+
+        if (! $subjectId || $subjectId <= 0) {
+            throw ValidationException::withMessages([
+                'subject_id' => ['Teacher attendance requires subject_id.'],
+            ]);
+        }
+
+        if (! $this->teacherCanManageSession(
+            user: $user,
+            classId: $classId,
+            subjectId: $subjectId,
+            date: $date,
+            timeStart: $timeStart,
+            timeEnd: $timeEnd,
+        )) {
+            throw new AuthorizationException('Forbidden.');
+        }
+
+        $this->ensureTeacherMarksWithinLiveSession(
+            date: $date,
+            timeStart: $timeStart,
+            timeEnd: $timeEnd,
+        );
+    }
+
+    private function canTrackSession(
+        User $user,
+        int $classId,
+        int $subjectId,
+        string $date,
+        string $timeStart,
+        ?string $timeEnd,
+    ): bool {
+        if ($user->role === 'super-admin' || $user->role === 'admin') {
+            return true;
+        }
+
+        if ($user->role !== 'teacher' || $subjectId <= 0) {
+            return false;
+        }
+
+        return $this->teacherCanManageSession(
+            user: $user,
+            classId: $classId,
+            subjectId: $subjectId,
+            date: $date,
+            timeStart: $timeStart,
+            timeEnd: $timeEnd,
+        );
+    }
+
+    private function teacherCanManageSession(
+        User $user,
+        int $classId,
+        int $subjectId,
+        string $date,
+        string $timeStart,
+        ?string $timeEnd,
+    ): bool {
+        if ($user->role !== 'teacher') {
+            return false;
+        }
+
+        $dayOfWeek = strtolower(Carbon::parse($date)->format('l'));
+        $normalizedStart = $this->normalizeTimeText($timeStart);
+        $normalizedEnd = $this->normalizeTimeText($timeEnd ?: $timeStart);
+
+        $sessionExists = Timetable::query()
+            ->where('class_id', $classId)
+            ->where('subject_id', $subjectId)
+            ->where('day_of_week', $dayOfWeek)
+            ->where('time_start', '<=', $normalizedStart)
+            ->where('time_end', '>=', $normalizedEnd)
+            ->exists();
+
+        if (! $sessionExists) {
+            return false;
+        }
+
+        $replacementTeacherId = $this->resolveSubstituteTeacherForSession(
+            classId: $classId,
+            subjectId: $subjectId,
+            date: $date,
+            timeStart: $normalizedStart,
+            timeEnd: $normalizedEnd,
+        );
+
+        if ($replacementTeacherId !== null) {
+            return $replacementTeacherId === (int) $user->id;
+        }
+
+        if ($this->teacherHasClassSubjectAssignment(
+            user: $user,
+            classId: $classId,
+            subjectId: $subjectId,
+        )) {
+            return true;
+        }
+
+        return Timetable::query()
+            ->where('class_id', $classId)
+            ->where('subject_id', $subjectId)
+            ->where('day_of_week', $dayOfWeek)
+            ->where('teacher_id', $user->id)
+            ->where('time_start', '<=', $normalizedStart)
+            ->where('time_end', '>=', $normalizedEnd)
+            ->exists();
+    }
+
+    private function teacherHasClassSubjectAssignment(User $user, int $classId, int $subjectId): bool
+    {
         return $user->teachingClasses()
             ->where('classes.id', $classId)
             ->wherePivot('subject_id', $subjectId)
             ->exists();
+    }
+
+    private function resolveSubstituteTeacherForSession(
+        int $classId,
+        int $subjectId,
+        string $date,
+        string $timeStart,
+        ?string $timeEnd,
+    ): ?int {
+        $normalizedDate = Carbon::parse($date)->toDateString();
+        $normalizedStart = $this->normalizeTimeText($timeStart);
+        $normalizedEnd = $this->normalizeTimeText($timeEnd ?: $timeStart);
+
+        $assignment = SubstituteTeacherAssignment::query()
+            ->where('class_id', $classId)
+            ->where('subject_id', $subjectId)
+            ->whereDate('date', $normalizedDate)
+            ->where('time_start', '<=', $normalizedStart)
+            ->where('time_end', '>=', $normalizedEnd)
+            ->orderByDesc('time_start')
+            ->first(['substitute_teacher_id']);
+
+        if (! $assignment) {
+            return null;
+        }
+
+        $teacherId = (int) $assignment->substitute_teacher_id;
+
+        return $teacherId > 0 ? $teacherId : null;
+    }
+
+    private function ensureTeacherMarksWithinLiveSession(
+        string $date,
+        string $timeStart,
+        ?string $timeEnd,
+    ): void {
+        $targetDate = Carbon::parse($date)->toDateString();
+        $now = now();
+
+        if ($targetDate !== $now->toDateString()) {
+            throw ValidationException::withMessages([
+                'date' => ['Teachers can mark attendance only for today.'],
+            ]);
+        }
+
+        $startAt = Carbon::parse($targetDate.' '.$this->normalizeTimeText($timeStart));
+        $endAt = Carbon::parse($targetDate.' '.$this->normalizeTimeText($timeEnd ?: $timeStart));
+
+        if ($now->lt($startAt) || $now->gt($endAt)) {
+            throw ValidationException::withMessages([
+                'time_start' => ['Teachers can mark attendance only during the active timetable session.'],
+            ]);
+        }
+    }
+
+    private function normalizeTimeText(string $value): string
+    {
+        $text = trim($value);
+        if ($text === '') {
+            return '00:00:00';
+        }
+
+        if (strlen($text) >= 8) {
+            return substr($text, 0, 8);
+        }
+
+        if (strlen($text) === 5) {
+            return $text.':00';
+        }
+
+        return $text;
     }
 
     private function ensureStudentBelongsToClass(int $studentId, int $classId): void

@@ -80,10 +80,12 @@ class AnnouncementController extends Controller
 
         $payload['school_id'] = $this->resolveSchoolIdForWrite($user, $payload['school_id'] ?? null);
         $payload = $this->prepareAnnouncementTargetPayload($payload);
+        $this->enforceTeacherAnnouncementWriteScope($user, $payload);
         $this->validateClassBelongsToSchool($payload['class_id'] ?? null, (int) $payload['school_id']);
         $this->validateTargetRole($payload['target_role'] ?? null);
         $this->validateTargetUser($payload['target_user_id'] ?? null, (int) $payload['school_id'], $payload['target_role'] ?? null);
         $payload['date'] = $payload['date'] ?? now()->toDateString();
+        $payload['posted_by'] = (int) $user->id;
 
         $announcement = Announcement::query()->create($payload);
         $attachmentUrls = $this->storeUploadedAttachments($request, $announcement);
@@ -116,6 +118,7 @@ class AnnouncementController extends Controller
         }
 
         $payload = $this->prepareAnnouncementTargetPayload($payload, $announcement);
+        $this->enforceTeacherAnnouncementWriteScope($user, $payload);
 
         $targetSchoolId = (int) ($payload['school_id'] ?? $announcement->school_id);
         $this->validateClassBelongsToSchool($payload['class_id'] ?? $announcement->class_id, $targetSchoolId);
@@ -258,9 +261,19 @@ class AnnouncementController extends Controller
             return $requestedSchoolId;
         }
 
+        if ($user->role === 'teacher') {
+            if (! $user->school_id) {
+                throw ValidationException::withMessages([
+                    'school_id' => ['This teacher account has no school assigned.'],
+                ]);
+            }
+
+            return (int) $user->school_id;
+        }
+
         if ($user->role !== 'admin') {
             throw ValidationException::withMessages([
-                'role' => ['Only super-admin or admin can create announcements.'],
+                'role' => ['Only super-admin, admin, or teacher can create announcements.'],
             ]);
         }
 
@@ -271,6 +284,37 @@ class AnnouncementController extends Controller
         }
 
         return (int) $user->school_id;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function enforceTeacherAnnouncementWriteScope(User $user, array $payload): void
+    {
+        if ($user->role !== 'teacher') {
+            return;
+        }
+
+        $classId = (int) ($payload['class_id'] ?? 0);
+        if ($classId <= 0) {
+            throw ValidationException::withMessages([
+                'class_id' => ['Teachers must select one class when posting announcements.'],
+            ]);
+        }
+
+        $teachesClass = $user->teachingClasses()->where('classes.id', $classId)->exists();
+        if (! $teachesClass) {
+            throw ValidationException::withMessages([
+                'class_id' => ['You can only post announcements to your assigned classes.'],
+            ]);
+        }
+
+        if (! empty($payload['target_role']) || ! empty($payload['target_user_id'])) {
+            throw ValidationException::withMessages([
+                'target_role' => ['Teachers can only post class announcements (no role/user override).'],
+                'target_user_id' => ['Teachers can only post class announcements (no role/user override).'],
+            ]);
+        }
     }
 
     private function validateClassBelongsToSchool(?int $classId, int $schoolId): void

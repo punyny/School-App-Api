@@ -9,6 +9,7 @@ use App\Models\Subject;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -195,5 +196,83 @@ class EnhancementsApiTest extends TestCase
 
         $this->assertGreaterThan(0, (int) $response->json('data.recipients_count'));
         Queue::assertPushed(SendBroadcastNotificationJob::class);
+    }
+
+    public function test_teacher_cannot_queue_teacher_audience_notification_broadcast(): void
+    {
+        Queue::fake();
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $token = $teacher->createToken('phpunit')->plainTextToken;
+
+        $this->withToken($token)->postJson('/api/notifications/broadcast', [
+            'title' => 'Teacher only',
+            'content' => 'This should be blocked.',
+            'audience' => 'all_teacher',
+        ])->assertForbidden();
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_teacher_cannot_queue_class_notification_broadcast(): void
+    {
+        Queue::fake();
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $classId = $teacher->teachingClasses()->value('classes.id');
+        $token = $teacher->createToken('phpunit')->plainTextToken;
+
+        $this->withToken($token)->postJson('/api/notifications/broadcast', [
+            'title' => 'Class Notice',
+            'content' => 'Students and parents only.',
+            'audience' => 'class',
+            'class_id' => $classId,
+        ])->assertForbidden();
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_broadcast_job_can_send_telegram_when_recipient_chat_id_is_configured(): void
+    {
+        $this->seed();
+
+        config([
+            'services.telegram.enabled' => true,
+            'services.telegram.bot_token' => 'test-bot-token',
+            'services.telegram.base_url' => 'https://api.telegram.org',
+            'services.telegram.parse_mode' => '',
+        ]);
+
+        Http::fake([
+            'https://api.telegram.org/*' => Http::response(['ok' => true, 'result' => ['message_id' => 456]], 200),
+        ]);
+
+        $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $student = User::query()->where('email', 'student@example.com')->firstOrFail();
+        $student->forceFill(['telegram_chat_id' => '222333444'])->save();
+        $token = $admin->createToken('phpunit')->plainTextToken;
+
+        $this->withToken($token)->postJson('/api/notifications/broadcast', [
+            'title' => 'Telegram Broadcast',
+            'content' => 'This is a telegram broadcast test.',
+            'user_ids' => [$student->id],
+        ])->assertStatus(202);
+
+        Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+            if ($request->method() !== 'POST') {
+                return false;
+            }
+
+            if (! str_contains($request->url(), '/bottest-bot-token/sendMessage')) {
+                return false;
+            }
+
+            $data = $request->data();
+
+            return (string) ($data['chat_id'] ?? '') === '222333444'
+                && str_contains((string) ($data['text'] ?? ''), 'Telegram Broadcast');
+        });
     }
 }

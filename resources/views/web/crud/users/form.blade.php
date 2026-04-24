@@ -158,6 +158,10 @@
         <label>{{ __('ui.user_form.phone') }}</label>
         <input type="text" name="phone" id="phone-field" value="{{ old('phone', $item['phone'] ?? '') }}">
 
+        <label>{{ __('ui.user_form.telegram_chat_id') }}</label>
+        <input type="text" name="telegram_chat_id" value="{{ old('telegram_chat_id', $item['telegram_chat_id'] ?? '') }}" placeholder="{{ __('ui.user_form.telegram_chat_id_placeholder') }}">
+        <p class="text-muted" style="margin:8px 0 12px;">{{ __('ui.user_form.telegram_chat_id_hint') }}</p>
+
         <section data-role-block="non-admin">
             <label>{{ __('ui.user_form.gender') }}</label>
             @php $gender = old('gender', $item['gender'] ?? ''); @endphp

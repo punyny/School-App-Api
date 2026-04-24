@@ -118,6 +118,8 @@
     </style>
 </head>
 <body>
+    <div id="web-react-shell-root" data-shell="guest"></div>
+    <div id="web-legacy-content">
     <main class="card">
         <div class="badge">School Mobile</div>
         <h1>Open the app to finish sign-in</h1>
@@ -142,5 +144,7 @@
             }
         }, 1800);
     </script>
+    </div>
+    @vite('resources/js/react-web-shell.jsx')
 </body>
 </html>

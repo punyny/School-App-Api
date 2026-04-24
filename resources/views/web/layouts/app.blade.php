@@ -63,26 +63,26 @@
         }
 
         html[data-theme="dark"] {
-            --bg-page-1: #071412;
-            --bg-page-mid: #0d1719;
-            --bg-page-2: #0f1c23;
-            --bg-accent-1: rgba(59, 130, 246, 0.20);
-            --bg-accent-2: rgba(249, 115, 22, 0.16);
-            --frame-bg: rgba(8, 15, 17, 0.92);
-            --surface: #101b1d;
-            --surface-soft: #162427;
-            --line: #2a413d;
-            --text-main: #ebf5f0;
-            --text-muted: #9fb4ae;
-            --primary: #34d3c0;
-            --primary-2: #13998b;
-            --accent-blue: #60a5fa;
-            --accent-orange: #fb923c;
-            --accent-green: #4ade80;
-            --danger: #fb7185;
+            --bg-page-1: #000000;
+            --bg-page-mid: #0a0a0a;
+            --bg-page-2: #111111;
+            --bg-accent-1: rgba(255, 255, 255, 0.08);
+            --bg-accent-2: rgba(255, 255, 255, 0.05);
+            --frame-bg: rgba(0, 0, 0, 0.92);
+            --surface: #0f0f0f;
+            --surface-soft: #1a1a1a;
+            --line: #383838;
+            --text-main: #f5f5f5;
+            --text-muted: #b5b5b5;
+            --primary: #8f8f8f;
+            --primary-2: #5a5a5a;
+            --accent-blue: #9d9d9d;
+            --accent-orange: #868686;
+            --accent-green: #7f7f7f;
+            --danger: #949494;
             --shadow-lg: 0 26px 60px rgba(0, 0, 0, 0.38);
             --shadow-sm: 0 10px 22px rgba(0, 0, 0, 0.22);
-            --title-gradient: linear-gradient(120deg, #9ff4eb 0%, #34d3c0 34%, #60a5fa 67%, #b7fff1 100%);
+            --title-gradient: linear-gradient(120deg, #f3f3f3 0%, #cfcfcf 34%, #a7a7a7 67%, #f3f3f3 100%);
         }
 
         * {
@@ -219,6 +219,86 @@
             font-size: 11px;
             color: var(--text-muted);
             font-weight: 600;
+        }
+
+        .sidebar-user-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: inherit;
+            border: 1px solid var(--line);
+            border-radius: 13px;
+            background: rgba(255, 255, 255, 0.88);
+            padding: 9px;
+            margin: 0 4px 12px;
+            transition: .18s ease;
+        }
+
+        .sidebar-user-card:hover {
+            border-color: #c7d7d1;
+            background: var(--surface-soft);
+        }
+
+        .sidebar-user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 11px;
+            overflow: hidden;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--primary), var(--primary-2));
+            color: #fff;
+            font-size: 13px;
+            font-weight: 800;
+            flex: 0 0 auto;
+        }
+
+        .sidebar-user-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .sidebar-user-meta {
+            min-width: 0;
+            display: grid;
+            gap: 1px;
+        }
+
+        .sidebar-user-name {
+            margin: 0;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.2;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .sidebar-user-role {
+            margin: 0;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .35px;
+            font-weight: 700;
+            color: #4f615a;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .sidebar-user-email {
+            margin: 0;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .global-sidebar h3 {
@@ -627,36 +707,62 @@
 
         .user-chip {
             display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            padding: 7px 10px;
+            align-items: flex-start;
+            gap: 11px;
+            padding: 8px 11px;
             border: 1px solid var(--line);
-            border-radius: 12px;
+            border-radius: 14px;
             background: #fff;
-            max-width: 260px;
+            min-width: 240px;
+            max-width: 320px;
         }
 
         .user-avatar {
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
             display: grid;
             place-items: center;
             background: linear-gradient(135deg, var(--accent-blue), var(--primary));
             color: #fff;
-            font-size: 11px;
-            font-weight: 700;
+            font-size: 14px;
+            font-weight: 800;
             flex: 0 0 auto;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.38);
+        }
+
+        .user-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .user-chip-meta {
+            display: grid;
+            gap: 2px;
+            min-width: 0;
         }
 
         .user-chip .name {
             display: block;
-            font-size: 12px;
-            font-weight: 700;
+            font-size: 13px;
+            font-weight: 800;
             line-height: 1.2;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+
+        .user-chip .role {
+            display: block;
+            font-size: 10px;
+            color: #4a6077;
+            line-height: 1.15;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.35px;
         }
 
         .user-chip .email {
@@ -1728,8 +1834,8 @@
         }
 
         @keyframes dash-number-pulse {
-            0%, 100% { text-shadow: 0 0 0 rgba(15, 118, 110, 0); }
-            50% { text-shadow: 0 6px 16px rgba(15, 118, 110, .16); }
+            0%, 100% { text-shadow: 0 0 0 rgba(255, 255, 255, 0); }
+            50% { text-shadow: 0 6px 16px rgba(255, 255, 255, .18); }
         }
 
         @keyframes dash-blob {
@@ -1738,8 +1844,18 @@
         }
 
         html[data-theme="dark"] .global-sidebar {
-            background: linear-gradient(180deg, #0d1719 0%, #132124 100%);
+            background: linear-gradient(180deg, #080808 0%, #151515 100%);
             border-right-color: var(--line);
+        }
+
+        html[data-theme="dark"] .sidebar-user-card {
+            background: rgba(18, 18, 18, 0.92);
+            border-color: var(--line);
+        }
+
+        html[data-theme="dark"] .sidebar-user-role,
+        html[data-theme="dark"] .sidebar-user-email {
+            color: var(--text-muted);
         }
 
         html[data-theme="dark"] .global-sidebar h3,
@@ -1794,23 +1910,23 @@
         }
 
         html[data-theme="dark"] .school-standard-strip {
-            background: linear-gradient(100deg, rgba(16, 27, 29, 0.96) 0%, rgba(24, 35, 38, 0.94) 56%, rgba(13, 24, 26, 0.96) 100%);
+            background: linear-gradient(100deg, rgba(12, 12, 12, 0.96) 0%, rgba(20, 20, 20, 0.94) 56%, rgba(9, 9, 9, 0.96) 100%);
             border-color: var(--line);
         }
 
         html[data-theme="dark"] .role-pill {
-            border-color: rgba(74, 222, 128, 0.24);
-            background: rgba(17, 61, 44, 0.72);
-            color: #d8ffe6;
+            border-color: rgba(255, 255, 255, 0.24);
+            background: rgba(255, 255, 255, 0.08);
+            color: #f5f5f5;
         }
 
         html[data-theme="dark"] .panel-head {
-            background: linear-gradient(120deg, rgba(16, 27, 29, 1) 0%, rgba(22, 36, 39, 1) 100%);
+            background: linear-gradient(120deg, rgba(12, 12, 12, 1) 0%, rgba(22, 22, 22, 1) 100%);
             border-bottom-color: var(--line);
         }
 
         html[data-theme="dark"] tbody tr:nth-child(even) {
-            background: #132022;
+            background: #141414;
         }
 
         html[data-theme="dark"] tbody tr:hover,
@@ -1824,8 +1940,8 @@
         html[data-theme="dark"] .sidebar-group-toggle:hover,
         html[data-theme="dark"] .sidebar-links a:hover {
             background: var(--surface-soft);
-            border-color: #3b5a55;
-            color: var(--primary);
+            border-color: #5c5c5c;
+            color: var(--text-main);
         }
 
         html[data-theme="dark"] .sidebar-group .sidebar-links {
@@ -1837,7 +1953,7 @@
         html[data-theme="dark"] .nav a.active,
         html[data-theme="dark"] .theme-option.active,
         html[data-theme="dark"] .theme-option.active:hover {
-            color: #031313;
+            color: #f5f5f5;
         }
 
         html[data-theme="dark"] .school-standard-date,
@@ -1849,18 +1965,47 @@
         html[data-theme="dark"] .upload-meta,
         html[data-theme="dark"] .upload-note,
         html[data-theme="dark"] .upload-hints span,
-        html[data-theme="dark"] .user-chip .email {
+        html[data-theme="dark"] .user-chip .email,
+        html[data-theme="dark"] .user-chip .role {
             color: var(--text-muted);
         }
 
         html[data-theme="dark"] .bar-track {
-            background: #203034;
+            background: #232323;
         }
 
         html[data-theme="dark"] .rt-toast {
-            background: #0f2022;
-            border-color: rgba(130, 187, 178, 0.20);
+            background: #101010;
+            border-color: rgba(255, 255, 255, 0.20);
             box-shadow: 0 14px 30px rgba(0, 0, 0, .35);
+        }
+
+        html[data-theme="dark"] .logout {
+            background: linear-gradient(135deg, #8f8f8f, #5a5a5a);
+            color: #f5f5f5;
+        }
+
+        html[data-theme="dark"] .logout:hover {
+            box-shadow: 0 10px 18px rgba(0, 0, 0, 0.30);
+        }
+
+        html[data-theme="dark"] .metric-card-purple { background: linear-gradient(135deg, #2f2f2f, #121212); }
+        html[data-theme="dark"] .metric-card-blue { background: linear-gradient(135deg, #3b3b3b, #181818); }
+        html[data-theme="dark"] .metric-card-orange { background: linear-gradient(135deg, #4a4a4a, #222222); }
+        html[data-theme="dark"] .metric-card-green { background: linear-gradient(135deg, #595959, #2c2c2c); }
+
+        html[data-theme="dark"] .bar-present { background: linear-gradient(90deg, #f2f2f2, #bdbdbd); }
+        html[data-theme="dark"] .bar-absent { background: linear-gradient(90deg, #d0d0d0, #8d8d8d); }
+        html[data-theme="dark"] .bar-leave { background: linear-gradient(90deg, #ababab, #666666); }
+
+        html[data-theme="dark"] .rank-badge,
+        html[data-theme="dark"] .workflow-step,
+        html[data-theme="dark"] .user-avatar {
+            color: #f5f5f5;
+        }
+
+        html[data-theme="dark"] .rank-badge {
+            background: linear-gradient(135deg, #8a8a8a, #4f4f4f);
         }
 
         .app-frame.sidebar-collapsed .workspace-shell {
@@ -1877,6 +2022,7 @@
         }
 
         .app-frame.sidebar-collapsed .sidebar-brand > span:last-child,
+        .app-frame.sidebar-collapsed .sidebar-user-card,
         .app-frame.sidebar-collapsed .global-sidebar h3,
         .app-frame.sidebar-collapsed .sidebar-links a .nav-text {
             display: none;
@@ -2045,6 +2191,7 @@
 
             .user-chip {
                 max-width: none;
+                min-width: 0;
                 width: 100%;
             }
 
@@ -2217,7 +2364,8 @@
     <div class="shell">
         @auth
             @php
-                $role = (string) (auth()->user()?->normalizedRole() ?? '');
+                $user = auth()->user();
+                $role = (string) ($user?->normalizedRole() ?? '');
                 $roleLabel = match ($role) {
                     'super-admin' => __('ui.role.super_admin'),
                     'admin' => __('ui.role.admin'),
@@ -2226,8 +2374,15 @@
                     'parent', 'guardian' => __('ui.role.parent'),
                     default => ucfirst(str_replace('-', ' ', $role)),
                 };
-                $name = (string) (auth()->user()->name ?? 'User');
+                $name = (string) ($user?->name ?? 'User');
                 $initial = strtoupper(mb_substr($name, 0, 1));
+                $userImageRaw = trim((string) ($user?->image_url ?? ''));
+                $userImageUrl = '';
+                if ($userImageRaw !== '') {
+                    $userImageUrl = \Illuminate\Support\Str::startsWith($userImageRaw, ['http://', 'https://', 'data:', '/'])
+                        ? $userImageRaw
+                        : '/storage/'.ltrim($userImageRaw, '/');
+                }
                 $today = \Illuminate\Support\Carbon::now(config('app.timezone', 'Asia/Phnom_Penh'));
                 $schoolDateLabel = app()->getLocale() === 'km'
                     ? $today->locale('km')->translatedFormat('l ទី d ខែ F ឆ្នាំ Y')
@@ -2244,6 +2399,21 @@
                             <span>
                                 <p class="brand-name">Sala Digital</p>
                                 <p class="brand-sub">{{ __('ui.layout.brand_sub') }}</p>
+                            </span>
+                        </a>
+
+                        <a class="sidebar-user-card" href="{{ route('profile.show') }}">
+                            <span class="sidebar-user-avatar">
+                                @if($userImageUrl !== '')
+                                    <img src="{{ $userImageUrl }}" alt="User avatar">
+                                @else
+                                    {{ $initial !== '' ? $initial : 'U' }}
+                                @endif
+                            </span>
+                            <span class="sidebar-user-meta">
+                                <span class="sidebar-user-name">{{ $name }}</span>
+                                <span class="sidebar-user-role">{{ $roleLabel }}</span>
+                                <span class="sidebar-user-email">{{ $user?->email }}</span>
                             </span>
                         </a>
 
@@ -2300,18 +2470,14 @@
                             </div>
                         @endcan
 
-                        @can('web-manage-timetables')
-                            <h3>{{ __('ui.layout.timetable') }}</h3>
-                            <div class="sidebar-links">
-                                <a data-nav-item data-nav-icon="calendar-clock" href="{{ route('panel.timetables.index') }}" class="{{ request()->routeIs('panel.timetables.*') ? 'active' : '' }}">{{ __('ui.layout.routine') }}</a>
-                            </div>
-                        @endcan
-
                         @can('web-manage-attendance')
                             <h3>{{ __('ui.layout.attendance') }}</h3>
                             <div class="sidebar-links">
                                 <a data-nav-item data-nav-icon="clipboard-check" href="{{ route('panel.attendance.index') }}" class="{{ request()->routeIs('panel.attendance.index') ? 'active' : '' }}">{{ __('ui.layout.attendance_list') }}</a>
                                 <a data-nav-item data-nav-icon="check-circle-2" href="{{ route('panel.attendance.create') }}" class="{{ request()->routeIs('panel.attendance.create') ? 'active' : '' }}">{{ __('ui.layout.check_attendance') }}</a>
+                                @can('web-manage-substitute-assignments')
+                                    <a data-nav-item data-nav-icon="users-round" href="{{ route('panel.substitute-assignments.index') }}" class="{{ request()->routeIs('panel.substitute-assignments.*') ? 'active' : '' }}">{{ __('ui.layout.substitute_assignments') }}</a>
+                                @endcan
                             </div>
                         @endcan
 
@@ -2319,17 +2485,20 @@
                             <h3>{{ __('ui.layout.exams_scores') }}</h3>
                             <div class="sidebar-links">
                                 <a data-nav-item data-nav-icon="badge-percent" href="{{ route('panel.scores.index') }}" class="{{ request()->routeIs('panel.scores.*') ? 'active' : '' }}">{{ __('ui.layout.scores') }}</a>
+                                @if(in_array($role, ['super-admin', 'admin'], true))
+                                    <a data-nav-item data-nav-icon="file-text" href="{{ route('panel.student-reports.index') }}" class="{{ request()->routeIs('panel.student-reports.*') ? 'active' : '' }}">{{ __('ui.layout.student_reports') }}</a>
+                                @endif
                             </div>
                         @endcan
 
-                        @if($role === 'teacher' && Gate::allows('web-manage-homeworks'))
+                        @can('web-view-homeworks')
                             <h3>{{ __('ui.layout.homework') }}</h3>
                             <div class="sidebar-links">
                                 <a data-nav-item data-nav-icon="file-text" href="{{ route('panel.homeworks.index') }}" class="{{ request()->routeIs('panel.homeworks.*') ? 'active' : '' }}">{{ __('ui.layout.homework') }}</a>
                             </div>
-                        @endif
+                        @endcan
 
-                        @if(in_array($role, ['super-admin', 'admin', 'teacher'], true))
+                        @if(in_array($role, ['super-admin', 'admin'], true))
                             <h3>{{ __('ui.layout.media') }}</h3>
                             <div class="sidebar-links">
                                 <a data-nav-item data-nav-icon="image" href="{{ route('panel.media.index') }}" class="{{ request()->routeIs('panel.media.*') ? 'active' : '' }}">{{ __('ui.layout.media_library') }}</a>
@@ -2417,10 +2586,17 @@
                                 </form>
                                 <span class="role-pill">{{ $roleLabel }}</span>
                                 <span class="user-chip">
-                                    <span class="user-avatar">{{ $initial !== '' ? $initial : 'U' }}</span>
-                                    <span>
-                                        <span class="name">{{ auth()->user()->name }}</span>
-                                        <span class="email">{{ auth()->user()->email }}</span>
+                                    <span class="user-avatar">
+                                        @if($userImageUrl !== '')
+                                            <img src="{{ $userImageUrl }}" alt="Profile image">
+                                        @else
+                                            {{ $initial !== '' ? $initial : 'U' }}
+                                        @endif
+                                    </span>
+                                    <span class="user-chip-meta">
+                                        <span class="name">{{ $user?->name }}</span>
+                                        <span class="role">{{ $roleLabel }}</span>
+                                        <span class="email">{{ $user?->email }}</span>
                                     </span>
                                 </span>
                                 <a class="head-link" href="{{ route('dashboard') }}">{{ __('ui.layout.dashboard') }}</a>
@@ -2511,12 +2687,18 @@
                             </nav>
                         @endif
 
-                        @yield('content')
+                        <div id="web-react-shell-root" data-shell="auth"></div>
+                        <div id="web-legacy-content">
+                            @yield('content')
+                        </div>
                     </main>
                 </div>
             </div>
         @else
-            @yield('content')
+            <div id="web-react-shell-root" data-shell="guest"></div>
+            <div id="web-legacy-content">
+                @yield('content')
+            </div>
         @endauth
     </div>
 
@@ -3205,6 +3387,7 @@
                 });
         });
     </script>
+    @vite('resources/js/react-web-shell.jsx')
     @stack('scripts')
 </body>
 </html>

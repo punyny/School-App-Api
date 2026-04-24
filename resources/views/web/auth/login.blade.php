@@ -51,22 +51,22 @@
 
         html[data-theme="dark"] {
             color-scheme: dark;
-            --bg-1: #071412;
-            --bg-mid: #0d1719;
-            --bg-2: #0f1c23;
-            --bg-accent-1: rgba(59, 130, 246, 0.18);
-            --bg-accent-2: rgba(249, 115, 22, 0.14);
-            --surface: rgba(10, 18, 20, 0.92);
-            --surface-soft: rgba(15, 26, 28, 0.78);
-            --line: rgba(58, 86, 81, 0.62);
-            --text-main: #ebf5f0;
-            --text-muted: #9fb4ae;
-            --primary: #34d3c0;
-            --primary-2: #13998b;
-            --accent-blue: #60a5fa;
-            --accent-orange: #fb923c;
-            --danger: #fb7185;
-            --success: #4ade80;
+            --bg-1: #000000;
+            --bg-mid: #090909;
+            --bg-2: #121212;
+            --bg-accent-1: rgba(255, 255, 255, 0.07);
+            --bg-accent-2: rgba(255, 255, 255, 0.04);
+            --surface: rgba(10, 10, 10, 0.92);
+            --surface-soft: rgba(20, 20, 20, 0.78);
+            --line: rgba(255, 255, 255, 0.24);
+            --text-main: #f5f5f5;
+            --text-muted: #b5b5b5;
+            --primary: #8f8f8f;
+            --primary-2: #5a5a5a;
+            --accent-blue: #9d9d9d;
+            --accent-orange: #868686;
+            --danger: #949494;
+            --success: #8f8f8f;
             --shadow-lg: 0 30px 60px rgba(0, 0, 0, 0.34);
             --shadow-sm: 0 14px 30px rgba(0, 0, 0, 0.18);
         }
@@ -678,9 +678,9 @@
 
         html[data-theme="dark"] .login-brand {
             background:
-                radial-gradient(circle at top right, rgba(96, 165, 250, 0.18), transparent 34%),
-                linear-gradient(150deg, rgba(10, 18, 20, 0.90), rgba(15, 26, 28, 0.78));
-            border-color: rgba(62, 97, 90, 0.36);
+                radial-gradient(circle at top right, rgba(255, 255, 255, 0.18), transparent 34%),
+                linear-gradient(150deg, rgba(10, 10, 10, 0.90), rgba(20, 20, 20, 0.78));
+            border-color: rgba(255, 255, 255, 0.24);
         }
 
         html[data-theme="dark"] .brand-step,
@@ -702,7 +702,7 @@
 
         html[data-theme="dark"] .auth-method-helper {
             border-color: var(--line);
-            background: rgba(15, 26, 28, 0.78);
+            background: rgba(18, 18, 18, 0.82);
         }
 
         html[data-theme="dark"] .auth-method-helper strong {
@@ -710,12 +710,12 @@
         }
 
         html[data-theme="dark"] .password-toggle {
-            background: rgba(52, 211, 192, 0.14);
-            color: #b5f7ee;
+            background: rgba(255, 255, 255, 0.14);
+            color: #f5f5f5;
         }
 
         html[data-theme="dark"] .field-shell svg {
-            fill: #93b3ab;
+            fill: #bdbdbd;
         }
 
         html[data-theme="dark"] .field input::placeholder,
@@ -727,11 +727,11 @@
         }
 
         html[data-theme="dark"] .feedback-success {
-            background: rgba(20, 83, 45, 0.38);
+            background: rgba(255, 255, 255, 0.12);
         }
 
         html[data-theme="dark"] .feedback-error {
-            background: rgba(127, 29, 29, 0.30);
+            background: rgba(255, 255, 255, 0.08);
         }
 
         @media (max-width: 980px) {
@@ -783,6 +783,8 @@
     </style>
 </head>
 <body class="locale-{{ app()->getLocale() === 'km' ? 'km' : 'en' }}">
+    <div id="web-react-shell-root" data-shell="guest"></div>
+    <div id="web-legacy-content">
     <div class="top-controls">
         <div class="theme-switch" role="group" aria-label="Theme switch">
             <button type="button" class="theme-option" data-theme-option="light">Light</button>
@@ -1117,5 +1119,7 @@
             syncPasswordToggle();
         });
     </script>
+    </div>
+    @vite('resources/js/react-web-shell.jsx')
 </body>
 </html>

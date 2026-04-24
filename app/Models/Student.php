@@ -65,6 +65,11 @@ class Student extends Model
         return $this->hasMany(HomeworkStatus::class, 'student_id');
     }
 
+    public function homeworkSubmissions(): HasMany
+    {
+        return $this->hasMany(HomeworkSubmission::class, 'student_id');
+    }
+
     public function parents(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'parent_child', 'student_id', 'parent_id')

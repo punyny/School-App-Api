@@ -513,7 +513,7 @@ class ClassCrudController extends Controller
             $errors = array_merge($errors, $assignmentErrors);
         }
 
-        $timetableErrors = $this->createTimetableRowsForClass(
+        $timetableErrors = $this->synchronizeTimetableRowsForClass(
             $request,
             $api,
             $classId,
@@ -614,13 +614,56 @@ class ClassCrudController extends Controller
      * @param  array<int, array<string, mixed>>  $rows
      * @return array<string, array<int, string>>
      */
-    private function createTimetableRowsForClass(
+    private function synchronizeTimetableRowsForClass(
         Request $request,
         InternalApiClient $api,
         int $classId,
         array $rows
     ): array {
-        foreach ($rows as $row) {
+        $existingResult = $api->get($request, '/api/timetables', [
+            'class_id' => $classId,
+            'per_page' => 100,
+        ]);
+
+        if (($existingResult['status'] ?? 0) !== 200) {
+            return $this->extractErrors($existingResult);
+        }
+
+        $existingRows = collect($existingResult['data']['data'] ?? [])
+            ->filter(fn ($row): bool => is_array($row))
+            ->map(function (array $row): array {
+                return [
+                    'id' => (int) ($row['id'] ?? 0),
+                    'subject_id' => (int) ($row['subject_id'] ?? data_get($row, 'subject.id', 0)),
+                    'teacher_id' => (int) ($row['teacher_id'] ?? data_get($row, 'teacher.id', 0)),
+                    'day_of_week' => strtolower(trim((string) ($row['day_of_week'] ?? ''))),
+                    'time_start' => substr(trim((string) ($row['time_start'] ?? '')), 0, 5),
+                    'time_end' => substr(trim((string) ($row['time_end'] ?? '')), 0, 5),
+                ];
+            })
+            ->filter(fn (array $row): bool => $row['id'] > 0)
+            ->values();
+
+        /** @var \Illuminate\Support\Collection<string, array{id:int,subject_id:int,teacher_id:int,day_of_week:string,time_start:string,time_end:string}> $existingRowsByKey */
+        $existingRowsByKey = $existingRows->mapWithKeys(
+            fn (array $row): array => [$this->timetableRowKey($row) => $row]
+        );
+
+        /** @var \Illuminate\Support\Collection<string, array{day_of_week:string,subject_id:int,teacher_id:int,time_start:string,time_end:string}> $targetRowsByKey */
+        $targetRowsByKey = collect($rows)->mapWithKeys(
+            fn (array $row): array => [$this->timetableRowKey($row) => $row]
+        );
+
+        $rowsToDelete = $existingRowsByKey->diffKeys($targetRowsByKey)->values();
+        foreach ($rowsToDelete as $rowToDelete) {
+            $result = $api->delete($request, '/api/timetables/'.(int) ($rowToDelete['id'] ?? 0));
+            if (($result['status'] ?? 0) !== 200) {
+                return $this->extractErrors($result);
+            }
+        }
+
+        $rowsToCreate = $targetRowsByKey->diffKeys($existingRowsByKey)->values();
+        foreach ($rowsToCreate as $row) {
             $result = $api->post($request, '/api/timetables', [
                 'class_id' => $classId,
                 'subject_id' => (int) $row['subject_id'],
@@ -636,6 +679,20 @@ class ClassCrudController extends Controller
         }
 
         return [];
+    }
+
+    /**
+     * @param  array{day_of_week:string,subject_id:int,teacher_id:int,time_start:string,time_end:string}|array{id?:int,day_of_week:string,subject_id:int,teacher_id:int,time_start:string,time_end:string}  $row
+     */
+    private function timetableRowKey(array $row): string
+    {
+        return implode('|', [
+            strtolower(trim((string) ($row['day_of_week'] ?? ''))),
+            (int) ($row['subject_id'] ?? 0),
+            (int) ($row['teacher_id'] ?? 0),
+            substr(trim((string) ($row['time_start'] ?? '')), 0, 5),
+            substr(trim((string) ($row['time_end'] ?? '')), 0, 5),
+        ]);
     }
 
     /**
@@ -719,6 +776,16 @@ class ClassCrudController extends Controller
 
         /** @var array<int, array{day_of_week:string,subject_id:int,teacher_id:int,time_start:string,time_end:string}> $result */
         $result = $normalized->all();
+
+        $duplicates = collect($result)
+            ->groupBy(fn (array $row): string => $this->timetableRowKey($row))
+            ->filter(fn ($group): bool => $group->count() > 1);
+
+        if ($duplicates->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'timetable_rows' => ['Duplicate timetable rows are not allowed.'],
+            ]);
+        }
 
         return $result;
     }

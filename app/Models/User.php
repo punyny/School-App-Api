@@ -34,6 +34,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'email',
         'email_verified_at',
         'phone',
+        'telegram_chat_id',
         'gender',
         'dob',
         'password',

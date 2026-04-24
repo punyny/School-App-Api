@@ -6,13 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\LeaveRequestStatusUpdateRequest;
 use App\Http\Requests\Api\LeaveRequestStoreRequest;
 use App\Http\Requests\Api\LeaveRequestUpdateRequest;
-use App\Models\Attendance;
 use App\Models\LeaveRequest;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\Subject;
 use App\Models\Notification as UserNotification;
 use App\Models\User;
+use App\Services\LeaveRequestStatusService;
+use App\Services\LeaveRequestTelegramNotifier;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +23,11 @@ use Illuminate\Validation\ValidationException;
 
 class LeaveRequestController extends Controller
 {
+    public function __construct(
+        private readonly LeaveRequestStatusService $leaveRequestStatusService,
+        private readonly LeaveRequestTelegramNotifier $leaveRequestTelegramNotifier,
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', LeaveRequest::class);
@@ -166,31 +172,15 @@ class LeaveRequestController extends Controller
         $this->authorize('updateStatus', $leaveRequest);
 
         $status = $request->validated()['status'];
-        $user = $request->user();
-
-        DB::transaction(function () use ($leaveRequest, $status, $user): void {
-            $leaveRequest->status = $status;
-
-            if ($status === 'approved') {
-                $leaveRequest->approved_by = $user->id;
-                $leaveRequest->approved_at = now();
-            } else {
-                $leaveRequest->approved_by = null;
-                $leaveRequest->approved_at = null;
-            }
-
-            $leaveRequest->save();
-
-            if ($status === 'approved') {
-                $this->syncApprovedLeaveToAttendance($leaveRequest->fresh());
-            }
-
-            $this->notifySubmitterAndFamily($leaveRequest->fresh(), $status);
-        });
+        $updatedLeaveRequest = $this->leaveRequestStatusService->updateStatus(
+            leaveRequest: $leaveRequest,
+            status: $status,
+            actor: $request->user(),
+        );
 
         return response()->json([
             'message' => 'Leave request status updated.',
-            'data' => $leaveRequest->fresh()->load(['student.user', 'student.class', 'subject', 'submitter', 'approver', 'recipients']),
+            'data' => $updatedLeaveRequest,
         ]);
     }
 
@@ -399,13 +389,6 @@ class LeaveRequestController extends Controller
 
         $endDate = Carbon::parse((string) ($payload['end_date'] ?? ''))->toDateString();
         $returnDate = Carbon::parse((string) ($payload['return_date'] ?? ''))->toDateString();
-        $totalDays = (int) ($payload['total_days'] ?? 0);
-
-        if ($totalDays <= 0) {
-            throw ValidationException::withMessages([
-                'total_days' => ['total_days must be at least 1.'],
-            ]);
-        }
 
         if (Carbon::parse($endDate)->lt(Carbon::parse($startDate))) {
             throw ValidationException::withMessages([
@@ -419,10 +402,7 @@ class LeaveRequestController extends Controller
             ]);
         }
 
-        $expectedDays = Carbon::parse($startDate)->diffInDays(Carbon::parse($endDate)) + 1;
-        if ($totalDays !== $expectedDays) {
-            $totalDays = $expectedDays;
-        }
+        $totalDays = Carbon::parse($startDate)->diffInDays(Carbon::parse($endDate)) + 1;
 
         return [
             'student' => $student,
@@ -551,7 +531,7 @@ class LeaveRequestController extends Controller
 
     private function notifyRecipients(LeaveRequest $leaveRequest): void
     {
-        $leaveRequest->loadMissing('student.user', 'recipients');
+        $leaveRequest->loadMissing('student.user', 'student.parents', 'recipients');
 
         $recipientIds = $leaveRequest->recipients
             ->pluck('id')
@@ -561,25 +541,43 @@ class LeaveRequestController extends Controller
             ->values()
             ->all();
 
-        if ($recipientIds === []) {
-            return;
+        $parentRecipientIds = ($leaveRequest->student?->parents ?? collect())
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0 && $id !== (int) $leaveRequest->submitted_by)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($recipientIds !== []) {
+            $studentName = (string) ($leaveRequest->student?->user?->name ?? 'Student');
+            $subjectName = $this->leaveSubjectSummary($leaveRequest);
+            $rows = [];
+            $now = now();
+            foreach ($recipientIds as $recipientId) {
+                $rows[] = [
+                    'user_id' => $recipientId,
+                    'title' => 'Leave request pending approval',
+                    'content' => $studentName.' requested leave for '.$subjectName.'.',
+                    'date' => $now,
+                    'read_status' => false,
+                ];
+            }
+
+            UserNotification::query()->insert($rows);
+
+            $this->leaveRequestTelegramNotifier->sendPendingApprovalNotifications(
+                leaveRequest: $leaveRequest,
+                recipientIds: $recipientIds,
+                title: 'Leave request pending approval',
+                content: $studentName.' requested leave for '.$subjectName.'.',
+            );
         }
 
-        $studentName = (string) ($leaveRequest->student?->user?->name ?? 'Student');
-        $subjectName = $this->leaveSubjectSummary($leaveRequest);
-        $rows = [];
-        $now = now();
-        foreach ($recipientIds as $recipientId) {
-            $rows[] = [
-                'user_id' => $recipientId,
-                'title' => 'Leave request pending approval',
-                'content' => $studentName.' requested leave for '.$subjectName.'.',
-                'date' => $now,
-                'read_status' => false,
-            ];
-        }
-
-        UserNotification::query()->insert($rows);
+        $this->leaveRequestTelegramNotifier->sendParentSubmissionNotifications(
+            leaveRequest: $leaveRequest,
+            recipientIds: $parentRecipientIds,
+        );
     }
 
     private function leaveSubjectSummary(LeaveRequest $leaveRequest): string
@@ -611,157 +609,6 @@ class LeaveRequestController extends Controller
         }
 
         return implode(', ', array_slice($names, 0, 3));
-    }
-
-    private function notifySubmitterAndFamily(LeaveRequest $leaveRequest, string $status): void
-    {
-        $leaveRequest->loadMissing('student.parents', 'student.user', 'approver');
-
-        $recipientIds = collect([
-            (int) $leaveRequest->submitted_by,
-            (int) ($leaveRequest->student?->user_id ?? 0),
-        ])->merge(
-            $leaveRequest->student?->parents?->pluck('id') ?? []
-        )
-            ->map(fn ($id): int => (int) $id)
-            ->filter(fn (int $id): bool => $id > 0)
-            ->unique()
-            ->values()
-            ->all();
-
-        if ($recipientIds === []) {
-            return;
-        }
-
-        $studentName = (string) ($leaveRequest->student?->user?->name ?? 'Student');
-        $approverName = (string) ($leaveRequest->approver?->name ?? 'Teacher/Admin');
-        $title = match ($status) {
-            'approved' => 'Leave request approved',
-            'rejected' => 'Leave request rejected',
-            default => 'Leave request updated',
-        };
-        $content = match ($status) {
-            'approved' => 'Leave request for '.$studentName.' was approved by '.$approverName.'.',
-            'rejected' => 'Leave request for '.$studentName.' was rejected by '.$approverName.'.',
-            default => 'Leave request for '.$studentName.' is now '.$status.'.',
-        };
-        $rows = [];
-        $now = now();
-        foreach ($recipientIds as $recipientId) {
-            $rows[] = [
-                'user_id' => $recipientId,
-                'title' => $title,
-                'content' => $content,
-                'date' => $now,
-                'read_status' => false,
-            ];
-        }
-
-        UserNotification::query()->insert($rows);
-    }
-
-    private function syncApprovedLeaveToAttendance(LeaveRequest $leaveRequest): void
-    {
-        $student = Student::query()->find($leaveRequest->student_id);
-        if (! $student || ! $student->class_id) {
-            return;
-        }
-
-        $startDate = Carbon::parse((string) $leaveRequest->start_date)->startOfDay();
-        $endDate = Carbon::parse((string) ($leaveRequest->end_date ?? $leaveRequest->start_date))->startOfDay();
-        $statusNote = 'Auto leave by approved request #'.$leaveRequest->id;
-
-        if ($leaveRequest->request_type === 'hourly') {
-            $date = $startDate->toDateString();
-            $startTime = $this->normalizeTime($leaveRequest->start_time);
-            $endTime = $this->normalizeTime($leaveRequest->end_time);
-            if (! $startTime || ! $endTime) {
-                return;
-            }
-
-            $records = Attendance::query()
-                ->where('student_id', $student->id)
-                ->where('class_id', $student->class_id)
-                ->whereDate('date', $date)
-                ->get();
-
-            $updatedAny = false;
-            foreach ($records as $record) {
-                $recordStart = (string) $record->time_start;
-                $recordEnd = (string) ($record->time_end ?: $record->time_start);
-                if (! $this->timeRangesOverlap($startTime, $endTime, $recordStart, $recordEnd)) {
-                    continue;
-                }
-
-                $record->update([
-                    'status' => 'L',
-                    'remarks' => $statusNote,
-                ]);
-                $updatedAny = true;
-            }
-
-            if (! $updatedAny) {
-                Attendance::query()->updateOrCreate(
-                    [
-                        'student_id' => $student->id,
-                        'class_id' => $student->class_id,
-                        'date' => $date,
-                        'time_start' => $startTime,
-                    ],
-                    [
-                        'time_end' => $endTime,
-                        'status' => 'L',
-                        'remarks' => $statusNote,
-                    ]
-                );
-            }
-
-            return;
-        }
-
-        for ($cursor = $startDate->copy(); $cursor->lte($endDate); $cursor->addDay()) {
-            $date = $cursor->toDateString();
-            $records = Attendance::query()
-                ->where('student_id', $student->id)
-                ->where('class_id', $student->class_id)
-                ->whereDate('date', $date)
-                ->get();
-
-            if ($records->isEmpty()) {
-                Attendance::query()->updateOrCreate(
-                    [
-                        'student_id' => $student->id,
-                        'class_id' => $student->class_id,
-                        'date' => $date,
-                        'time_start' => '00:00:00',
-                    ],
-                    [
-                        'time_end' => null,
-                        'status' => 'L',
-                        'remarks' => $statusNote,
-                    ]
-                );
-
-                continue;
-            }
-
-            foreach ($records as $record) {
-                $record->update([
-                    'status' => 'L',
-                    'remarks' => $statusNote,
-                ]);
-            }
-        }
-    }
-
-    private function timeRangesOverlap(string $startA, string $endA, string $startB, string $endB): bool
-    {
-        $aStart = strtotime($startA);
-        $aEnd = strtotime($endA);
-        $bStart = strtotime($startB);
-        $bEnd = strtotime($endB);
-
-        return $aStart < $bEnd && $aEnd > $bStart;
     }
 
     private function normalizeTime(mixed $value): ?string

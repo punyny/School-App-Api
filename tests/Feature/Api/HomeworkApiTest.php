@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Models\Homework;
+use App\Models\HomeworkSubmission;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\Subject;
@@ -116,5 +117,93 @@ class HomeworkApiTest extends TestCase
             'category' => 'attachment',
         ]);
         $this->assertNotEmpty($homework->fresh()->file_attachments);
+    }
+
+    public function test_student_can_submit_homework_with_text_and_attachment(): void
+    {
+        $this->seed();
+        Storage::fake('public');
+
+        $studentUser = User::query()->where('email', 'student@example.com')->firstOrFail();
+        $student = Student::query()->where('user_id', $studentUser->id)->firstOrFail();
+        $class = SchoolClass::query()->findOrFail((int) $student->class_id);
+        $subject = Subject::query()->where('school_id', $class->school_id)->firstOrFail();
+        $studentToken = $studentUser->createToken('phpunit')->plainTextToken;
+
+        $homework = Homework::query()->create([
+            'class_id' => $class->id,
+            'subject_id' => $subject->id,
+            'title' => 'Submission Practice',
+            'question' => 'Answer with text and one file.',
+            'due_date' => '2026-04-25',
+            'file_attachments' => [],
+        ]);
+
+        $response = $this->withToken($studentToken)->post("/api/homeworks/{$homework->id}/submissions", [
+            'answer_text' => 'My answer from student.',
+            'attachments' => [
+                UploadedFile::fake()->image('answer.png'),
+            ],
+        ], ['Accept' => 'application/json']);
+
+        $response->assertOk()
+            ->assertJsonPath('data.homework_id', $homework->id)
+            ->assertJsonPath('data.student_id', $student->id)
+            ->assertJsonPath('data.answer_text', 'My answer from student.');
+
+        $this->assertDatabaseHas('homework_submissions', [
+            'homework_id' => $homework->id,
+            'student_id' => $student->id,
+            'answer_text' => 'My answer from student.',
+        ]);
+
+        $this->assertDatabaseHas('homeworkstatus', [
+            'homework_id' => $homework->id,
+            'student_id' => $student->id,
+            'status' => 'Done',
+        ]);
+
+        $submissionId = (int) $response->json('data.id');
+        $this->assertGreaterThan(0, $submissionId);
+        $this->assertDatabaseHas('media', [
+            'mediable_type' => HomeworkSubmission::class,
+            'mediable_id' => $submissionId,
+            'category' => 'attachment',
+        ]);
+    }
+
+    public function test_teacher_can_view_student_submission_in_homework_detail(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $assignment = DB::table('teacher_class')->where('teacher_id', $teacher->id)->first();
+        $this->assertNotNull($assignment);
+        $teacherToken = $teacher->createToken('phpunit')->plainTextToken;
+
+        $student = Student::query()->where('class_id', (int) $assignment->class_id)->firstOrFail();
+        $studentUser = User::query()->findOrFail((int) $student->user_id);
+        $studentToken = $studentUser->createToken('phpunit')->plainTextToken;
+
+        $homework = Homework::query()->create([
+            'class_id' => (int) $assignment->class_id,
+            'subject_id' => (int) $assignment->subject_id,
+            'title' => 'Teacher review submission',
+            'question' => 'Write short answer.',
+            'due_date' => '2026-04-26',
+            'file_attachments' => [],
+        ]);
+
+        $submit = $this->withToken($studentToken)->postJson("/api/homeworks/{$homework->id}/submissions", [
+            'answer_text' => 'Student submitted answer',
+        ]);
+        $submit->assertOk();
+
+        $response = $this->withToken($teacherToken)->getJson("/api/homeworks/{$homework->id}");
+
+        $response->assertOk()
+            ->assertJsonPath('data.id', $homework->id)
+            ->assertJsonPath('data.submissions.0.student_id', $student->id)
+            ->assertJsonPath('data.submissions.0.answer_text', 'Student submitted answer');
     }
 }

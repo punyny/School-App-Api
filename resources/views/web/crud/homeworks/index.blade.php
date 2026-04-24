@@ -21,6 +21,9 @@
     @endif
 
     @php
+        $role = (string) ($userRole ?? '');
+        $isStudent = $role === 'student';
+        $isTeacherOrAdmin = in_array($role, ['super-admin', 'admin', 'teacher'], true);
         $selectedClassId = (string) ($filters['class_id'] ?? '');
         $selectedSubjectId = (string) ($filters['subject_id'] ?? '');
         $classSelectOptions = collect($classOptions ?? []);
@@ -41,36 +44,38 @@
         }
     @endphp
 
-    <form method="GET" action="{{ route('panel.homeworks.index') }}" class="panel panel-form panel-spaced">
-        <div class="form-grid">
-            <div>
-                <input type="text" class="searchable-select-search" placeholder="Search class..." data-select-search-for="filter_class_id">
-                <select id="filter_class_id" name="class_id">
-                    <option value="">Class</option>
-                    @foreach($classSelectOptions as $option)
-                        <option value="{{ $option['id'] }}" {{ $selectedClassId === (string) $option['id'] ? 'selected' : '' }}>
-                            {{ $option['label'] }}
-                        </option>
-                    @endforeach
-                </select>
+    @if(! $isStudent)
+        <form method="GET" action="{{ route('panel.homeworks.index') }}" class="panel panel-form panel-spaced">
+            <div class="form-grid">
+                <div>
+                    <input type="text" class="searchable-select-search" placeholder="Search class..." data-select-search-for="filter_class_id">
+                    <select id="filter_class_id" name="class_id">
+                        <option value="">Class</option>
+                        @foreach($classSelectOptions as $option)
+                            <option value="{{ $option['id'] }}" {{ $selectedClassId === (string) $option['id'] ? 'selected' : '' }}>
+                                {{ $option['label'] }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <input type="text" class="searchable-select-search" placeholder="Search subject..." data-select-search-for="filter_subject_id">
+                    <select id="filter_subject_id" name="subject_id">
+                        <option value="">Subject</option>
+                        @foreach($subjectSelectOptions as $option)
+                            <option value="{{ $option['id'] }}" {{ $selectedSubjectId === (string) $option['id'] ? 'selected' : '' }}>
+                                {{ $option['label'] }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                <input type="date" name="due_from" value="{{ $filters['due_from'] ?? '' }}">
+                <input type="date" name="due_to" value="{{ $filters['due_to'] ?? '' }}">
+                <input type="number" name="per_page" placeholder="Per Page" value="{{ $filters['per_page'] ?? 20 }}">
             </div>
-            <div>
-                <input type="text" class="searchable-select-search" placeholder="Search subject..." data-select-search-for="filter_subject_id">
-                <select id="filter_subject_id" name="subject_id">
-                    <option value="">Subject</option>
-                    @foreach($subjectSelectOptions as $option)
-                        <option value="{{ $option['id'] }}" {{ $selectedSubjectId === (string) $option['id'] ? 'selected' : '' }}>
-                            {{ $option['label'] }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
-            <input type="date" name="due_from" value="{{ $filters['due_from'] ?? '' }}">
-            <input type="date" name="due_to" value="{{ $filters['due_to'] ?? '' }}">
-            <input type="number" name="per_page" placeholder="Per Page" value="{{ $filters['per_page'] ?? 20 }}">
-        </div>
-        <button type="submit" class="btn-space-top">Filter</button>
-    </form>
+            <button type="submit" class="btn-space-top">Filter</button>
+        </form>
+    @endif
 
     <section class="panel">
         <div class="panel-head">Homeworks</div>
@@ -84,19 +89,31 @@
                 <th>Due Date</th>
                 <th>Due Time</th>
                 <th>Files</th>
+                <th>Submitted</th>
                 <th>Actions</th>
             </tr>
             </thead>
             <tbody>
             @forelse($items as $item)
+                @php
+                    $mySubmission = collect($item['submissions'] ?? [])->first();
+                    $isSubmitted = is_array($mySubmission) && ! empty($mySubmission['id']);
+                @endphp
                 <tr>
                     <td>{{ $item['id'] }}</td>
                     <td>{{ $item['title'] }}</td>
-                    <td>{{ $item['class_id'] }}</td>
-                    <td>{{ $item['subject_id'] }}</td>
+                    <td>{{ $item['class']['class_name'] ?? $item['class']['name'] ?? $item['class_id'] }}</td>
+                    <td>{{ $item['subject']['name'] ?? $item['subject_id'] }}</td>
                     <td>{{ $item['due_date'] ?? '-' }}</td>
                     <td>{{ isset($item['due_time']) && is_string($item['due_time']) ? substr($item['due_time'], 0, 5) : '-' }}</td>
                     <td>{{ count($item['media'] ?? []) + count($item['file_attachments'] ?? []) }}</td>
+                    <td>
+                        @if($isStudent)
+                            {{ $isSubmitted ? 'Yes' : 'No' }}
+                        @else
+                            {{ (int) ($item['submissions_count'] ?? count($item['submissions'] ?? [])) }}
+                        @endif
+                    </td>
                     <td>
                         @can('web-manage-homeworks')
                         <a href="{{ route('panel.homeworks.edit', $item['id']) }}">Edit</a>
@@ -107,11 +124,16 @@
                             <button type="submit">Delete</button>
                         </form>
                         @endcan
-                        
+
+                        @if($isTeacherOrAdmin || $isStudent)
+                            <a href="{{ route('panel.homeworks.submission', $item['id']) }}">
+                                {{ $isStudent ? ($isSubmitted ? 'View / Re-submit' : 'Submit') : 'Submissions' }}
+                            </a>
+                        @endif
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="8">No data.</td></tr>
+                <tr><td colspan="9">No data.</td></tr>
             @endforelse
             </tbody>
         </table>

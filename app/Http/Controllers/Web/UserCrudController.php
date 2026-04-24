@@ -288,6 +288,7 @@ class UserCrudController extends Controller
             'email' => ['required', 'email', 'max:255'],
             'password' => $passwordRules,
             'phone' => ['nullable', 'string', 'max:20'],
+            'telegram_chat_id' => ['nullable', 'string', 'max:64'],
             'gender' => ['nullable', 'in:male,female,other'],
             'dob' => ['nullable', 'date'],
             'address' => ['nullable', 'string', 'max:255'],

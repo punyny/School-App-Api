@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\HomeworkSubmissionStoreRequest;
 use App\Http\Requests\Api\HomeworkStatusUpdateRequest;
 use App\Http\Requests\Api\HomeworkStoreRequest;
 use App\Http\Requests\Api\HomeworkUpdateRequest;
 use App\Models\Homework;
+use App\Models\HomeworkSubmission;
 use App\Models\HomeworkStatus;
 use App\Models\SchoolClass;
 use App\Models\Student;
@@ -36,9 +38,20 @@ class HomeworkController extends Controller
 
         $query = Homework::query()
             ->with(['class', 'subject', 'statuses.student.user', 'media'])
+            ->withCount('submissions')
             ->orderByDesc('due_date')
             ->orderByDesc('due_time')
             ->orderByDesc('id');
+
+        if ($request->user()->role === 'student') {
+            $studentId = (int) ($request->user()->studentProfile?->id ?? 0);
+            $query->with([
+                'submissions' => fn ($submissionQuery) => $submissionQuery
+                    ->where('student_id', $studentId > 0 ? $studentId : -1)
+                    ->with('media')
+                    ->latest('submitted_at'),
+            ]);
+        }
 
         $this->applyVisibilityScope($query, $request->user());
 
@@ -65,8 +78,11 @@ class HomeworkController extends Controller
     {
         $this->authorize('view', $homework);
 
+        $homework->load(['class', 'subject', 'statuses.student.user', 'media']);
+        $this->loadVisibleSubmissions($homework, $request->user());
+
         return response()->json([
-            'data' => $homework->load(['class', 'subject', 'statuses.student.user', 'media']),
+            'data' => $homework,
         ]);
     }
 
@@ -83,7 +99,7 @@ class HomeworkController extends Controller
             (int) $payload['subject_id']
         )) {
             return response()->json([
-                'message' => 'Only assigned teacher can manage homework for this class and subject.',
+                'message' => 'You do not have permission to manage homework for this class and subject.',
             ], 403);
         }
 
@@ -117,7 +133,7 @@ class HomeworkController extends Controller
 
         if (! $this->canManageHomeworkTarget($request->user(), $targetClassId, $targetSubjectId)) {
             return response()->json([
-                'message' => 'Only assigned teacher can manage homework for this class and subject.',
+                'message' => 'You do not have permission to manage homework for this class and subject.',
             ], 403);
         }
 
@@ -144,7 +160,7 @@ class HomeworkController extends Controller
 
         if (! $this->canManageHomeworkTarget($request->user(), (int) $homework->class_id, (int) $homework->subject_id)) {
             return response()->json([
-                'message' => 'Only assigned teacher can manage homework for this class and subject.',
+                'message' => 'You do not have permission to manage homework for this class and subject.',
             ], 403);
         }
 
@@ -184,6 +200,75 @@ class HomeworkController extends Controller
         return response()->json([
             'message' => 'Homework status updated.',
             'data' => $status->load(['homework', 'student.user']),
+        ]);
+    }
+
+    public function submit(HomeworkSubmissionStoreRequest $request, Homework $homework): JsonResponse
+    {
+        $this->authorize('submit', $homework);
+
+        $payload = $request->validated();
+        $studentId = (int) ($request->user()->studentProfile?->id ?? 0);
+        $student = Student::query()->findOrFail($studentId);
+
+        if ((int) $student->class_id !== (int) $homework->class_id) {
+            throw ValidationException::withMessages([
+                'student_id' => ['This homework is not in your class.'],
+            ]);
+        }
+
+        $answerText = trim((string) ($payload['answer_text'] ?? ''));
+        $fileAttachmentUrls = collect($payload['file_attachments'] ?? [])
+            ->map(fn ($url): string => trim((string) $url))
+            ->filter(fn (string $url): bool => $url !== '')
+            ->values()
+            ->all();
+        $uploadedFiles = $request->file('attachments', []);
+        $hasUploadedFiles = is_array($uploadedFiles) && $uploadedFiles !== [];
+
+        if ($answerText === '' && $fileAttachmentUrls === [] && ! $hasUploadedFiles) {
+            throw ValidationException::withMessages([
+                'answer_text' => ['Please provide answer text or at least one attachment.'],
+            ]);
+        }
+
+        $submission = HomeworkSubmission::query()->updateOrCreate(
+            [
+                'homework_id' => $homework->id,
+                'student_id' => $student->id,
+            ],
+            [
+                'answer_text' => $answerText !== '' ? $answerText : null,
+                'file_attachments' => $fileAttachmentUrls,
+                'submitted_at' => now(),
+            ],
+        );
+
+        $uploadedAttachmentUrls = $this->storeSubmissionUploadedAttachments($request, $submission);
+        if ($uploadedAttachmentUrls !== []) {
+            $mergedUrls = collect(array_merge($submission->file_attachments ?? [], $uploadedAttachmentUrls))
+                ->map(fn ($url): string => trim((string) $url))
+                ->filter(fn (string $url): bool => $url !== '')
+                ->unique()
+                ->values()
+                ->all();
+            $submission->forceFill(['file_attachments' => $mergedUrls])->save();
+        }
+
+        HomeworkStatus::query()->updateOrCreate(
+            [
+                'homework_id' => $homework->id,
+                'student_id' => $student->id,
+            ],
+            [
+                'status' => 'Done',
+                'completion_date' => now()->toDateString(),
+            ],
+        );
+
+        return response()->json([
+            'message' => 'បានដាក់កិច្ចការជោគជ័យ។',
+            'data' => $submission->fresh()->load(['student.user', 'homework', 'media']),
         ]);
     }
 
@@ -254,6 +339,67 @@ class HomeworkController extends Controller
                 'subject_id' => $homework->subject_id,
             ]
         );
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function storeSubmissionUploadedAttachments(Request $request, HomeworkSubmission $submission): array
+    {
+        $files = $request->file('attachments', []);
+        if (! is_array($files) || $files === []) {
+            return [];
+        }
+
+        return ProfileImageStorage::attachManyToModel(
+            $files,
+            $submission,
+            $request->user(),
+            'attachments/homework-submissions',
+            'attachment',
+            [
+                'module' => 'homework_submission',
+                'homework_id' => $submission->homework_id,
+                'student_id' => $submission->student_id,
+            ]
+        );
+    }
+
+    private function loadVisibleSubmissions(Homework $homework, User $user): void
+    {
+        if (! $user->can('viewSubmissions', $homework)) {
+            return;
+        }
+
+        if ($user->role === 'student') {
+            $studentId = (int) ($user->studentProfile?->id ?? 0);
+            $homework->load([
+                'submissions' => fn ($query) => $query
+                    ->where('student_id', $studentId > 0 ? $studentId : -1)
+                    ->with(['student.user', 'media'])
+                    ->latest('submitted_at'),
+            ]);
+
+            return;
+        }
+
+        if ($user->role === 'parent') {
+            $studentIds = $user->children()->pluck('students.id')->map(fn ($id): int => (int) $id)->all();
+            $homework->load([
+                'submissions' => fn ($query) => $query
+                    ->whereIn('student_id', $studentIds === [] ? [-1] : $studentIds)
+                    ->with(['student.user', 'media'])
+                    ->latest('submitted_at'),
+            ]);
+
+            return;
+        }
+
+        $homework->load([
+            'submissions' => fn ($query) => $query
+                ->with(['student.user', 'media'])
+                ->latest('submitted_at'),
+        ]);
     }
 
     private function resolveStudentForStatusUpdate(User $user, ?int $requestedStudentId): int
@@ -340,22 +486,34 @@ class HomeworkController extends Controller
 
     private function canManageHomeworkTarget(User $user, int $classId, int $subjectId): bool
     {
-        if ($user->role !== 'teacher') {
-            return false;
-        }
-
-        if (! $user->school_id) {
+        if (! in_array($user->role, ['super-admin', 'admin', 'teacher'], true)) {
             return false;
         }
 
         $class = SchoolClass::query()->find($classId);
-        if (! $class || $class->school_id !== $user->school_id) {
+        if (! $class) {
             return false;
         }
 
         $subject = Subject::query()->find($subjectId);
-        if (! $subject || (int) $subject->school_id !== (int) $user->school_id) {
+        if (! $subject) {
             return false;
+        }
+
+        if ((int) $class->school_id !== (int) $subject->school_id) {
+            return false;
+        }
+
+        if ($user->role === 'super-admin') {
+            return true;
+        }
+
+        if (! $user->school_id || (int) $class->school_id !== (int) $user->school_id) {
+            return false;
+        }
+
+        if ($user->role === 'admin') {
+            return true;
         }
 
         return DB::table('teacher_class')

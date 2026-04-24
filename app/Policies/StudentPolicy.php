@@ -43,13 +43,17 @@ class StudentPolicy
 
     public function create(User $user): bool
     {
-        return in_array($user->role, ['super-admin', 'admin'], true);
+        return in_array($user->role, ['super-admin', 'admin', 'teacher'], true);
     }
 
     public function update(User $user, Student $student): bool
     {
         if ($user->role === 'super-admin') {
             return true;
+        }
+
+        if ($user->role === 'teacher') {
+            return $this->managesClass($user, (int) $student->class_id);
         }
 
         return $user->role === 'admin'

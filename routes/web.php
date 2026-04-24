@@ -20,11 +20,13 @@ use App\Http\Controllers\Web\SchoolCrudController;
 use App\Http\Controllers\Web\ScoreCrudController;
 use App\Http\Controllers\Web\StudentController;
 use App\Http\Controllers\Web\StudentCrudController;
+use App\Http\Controllers\Web\SubstituteAssignmentCrudController;
 use App\Http\Controllers\Web\SubjectCrudController;
 use App\Http\Controllers\Web\SuperAdminController;
 use App\Http\Controllers\Web\TeacherController;
 use App\Http\Controllers\Web\TimetableCrudController;
 use App\Http\Controllers\Web\UserCrudController;
+use App\Http\Controllers\Web\StudentReportController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -64,6 +66,9 @@ Route::middleware(['auth', 'verified', 'role:super-admin,admin,teacher,student,p
         Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
         Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
         Route::post('/profile/change-password', [ProfileController::class, 'changePassword'])->name('profile.change-password');
+        Route::post('/profile/telegram/link-code', [ProfileController::class, 'generateTelegramLinkCode'])
+            ->middleware('throttle:6,1')
+            ->name('profile.telegram.link-code');
     });
 
 Route::prefix('super-admin')
@@ -73,6 +78,7 @@ Route::prefix('super-admin')
         Route::get('/dashboard', [SuperAdminController::class, 'dashboard'])->name('dashboard');
         Route::get('/schools', [SuperAdminController::class, 'schools'])->name('schools.index');
         Route::get('/schools/{school}/manage', [SuperAdminController::class, 'manageSchool'])->name('schools.manage');
+        Route::post('/schools/{school}/image', [SuperAdminController::class, 'updateSchoolImage'])->name('schools.image.update');
         Route::get('/users', [SuperAdminController::class, 'users'])->name('users.index');
         Route::get('/settings', [SuperAdminController::class, 'settings'])->name('settings');
     });
@@ -124,7 +130,7 @@ Route::prefix('panel/announcements')
 
 Route::prefix('panel/announcements')
     ->name('panel.announcements.')
-    ->middleware(['auth', 'verified', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-announcements'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-manage-announcements'])
     ->group(function (): void {
         Route::get('/create', [AnnouncementCrudController::class, 'create'])->name('create');
         Route::post('/', [AnnouncementCrudController::class, 'store'])->name('store');
@@ -204,16 +210,22 @@ Route::prefix('panel/timetables')
 
 Route::prefix('panel/students')
     ->name('panel.students.')
-    ->middleware(['auth', 'verified', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-students'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-manage-students'])
     ->group(function (): void {
         Route::get('/', [StudentCrudController::class, 'index'])->name('index');
-        Route::post('/import-csv', [StudentCrudController::class, 'importCsv'])->name('import-csv');
         Route::get('/create', [StudentCrudController::class, 'create'])->name('create');
         Route::post('/', [StudentCrudController::class, 'store'])->name('store');
         Route::get('/{student}/edit', [StudentCrudController::class, 'edit'])->name('edit');
         Route::get('/{student}', [StudentCrudController::class, 'show'])->whereNumber('student')->name('show');
         Route::put('/{student}', [StudentCrudController::class, 'update'])->name('update');
         Route::delete('/{student}', [StudentCrudController::class, 'destroy'])->name('destroy');
+    });
+
+Route::prefix('panel/students')
+    ->name('panel.students.')
+    ->middleware(['auth', 'verified', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-students'])
+    ->group(function (): void {
+        Route::post('/import-csv', [StudentCrudController::class, 'importCsv'])->name('import-csv');
     });
 
 Route::prefix('panel/attendance')
@@ -228,11 +240,27 @@ Route::prefix('panel/attendance')
         Route::delete('/{attendance}', [AttendanceCrudController::class, 'destroy'])->name('destroy');
     });
 
+Route::prefix('panel/substitute-assignments')
+    ->name('panel.substitute-assignments.')
+    ->middleware(['auth', 'verified', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-substitute-assignments'])
+    ->group(function (): void {
+        Route::get('/', [SubstituteAssignmentCrudController::class, 'index'])->name('index');
+        Route::post('/', [SubstituteAssignmentCrudController::class, 'store'])->name('store');
+        Route::delete('/{substituteAssignment}', [SubstituteAssignmentCrudController::class, 'destroy'])->name('destroy');
+    });
+
 Route::prefix('panel/homeworks')
     ->name('panel.homeworks.')
-    ->middleware(['auth', 'verified', 'role:teacher', 'admin.ip', 'can:web-manage-homeworks'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher,student,parent', 'admin.ip', 'can:web-view-homeworks'])
     ->group(function (): void {
         Route::get('/', [HomeworkCrudController::class, 'index'])->name('index');
+        Route::get('/{homework}/submission', [HomeworkCrudController::class, 'submission'])->name('submission');
+    });
+
+Route::prefix('panel/homeworks')
+    ->name('panel.homeworks.')
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-manage-homeworks'])
+    ->group(function (): void {
         Route::get('/create', [HomeworkCrudController::class, 'create'])->name('create');
         Route::post('/', [HomeworkCrudController::class, 'store'])->name('store');
         Route::get('/{homework}/edit', [HomeworkCrudController::class, 'edit'])->name('edit');
@@ -240,9 +268,16 @@ Route::prefix('panel/homeworks')
         Route::delete('/{homework}', [HomeworkCrudController::class, 'destroy'])->name('destroy');
     });
 
+Route::prefix('panel/homeworks')
+    ->name('panel.homeworks.')
+    ->middleware(['auth', 'verified', 'role:student', 'admin.ip', 'can:web-view-homeworks'])
+    ->group(function (): void {
+        Route::post('/{homework}/submission', [HomeworkCrudController::class, 'submitSubmission'])->name('submit');
+    });
+
 Route::prefix('panel/media')
     ->name('panel.media.')
-    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher', 'admin.ip'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin', 'admin.ip'])
     ->group(function (): void {
         Route::get('/', [MediaCrudController::class, 'index'])->name('index');
         Route::delete('/{media}', [MediaCrudController::class, 'destroy'])->name('destroy');
@@ -260,6 +295,14 @@ Route::prefix('panel/scores')
         Route::delete('/{score}', [ScoreCrudController::class, 'destroy'])->name('destroy');
     });
 
+Route::prefix('panel/student-reports')
+    ->name('panel.student-reports.')
+    ->middleware(['auth', 'verified', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-scores'])
+    ->group(function (): void {
+        Route::get('/', [StudentReportController::class, 'index'])->name('index');
+        Route::get('/export-excel', [StudentReportController::class, 'exportExcel'])->name('export-excel');
+    });
+
 Route::prefix('panel/leave-requests')
     ->name('panel.leave-requests.')
     ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher,student,parent', 'admin.ip', 'can:web-view-leave-requests'])
@@ -268,6 +311,13 @@ Route::prefix('panel/leave-requests')
         Route::get('/{leaveRequest}/edit', [LeaveRequestCrudController::class, 'edit'])->name('edit');
         Route::put('/{leaveRequest}', [LeaveRequestCrudController::class, 'update'])->name('update');
         Route::delete('/{leaveRequest}', [LeaveRequestCrudController::class, 'destroy'])->name('destroy');
+    });
+
+Route::prefix('panel/leave-requests')
+    ->name('panel.leave-requests.')
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-approve-leave-requests'])
+    ->group(function (): void {
+        Route::patch('/{leaveRequest}/status', [LeaveRequestCrudController::class, 'updateStatus'])->name('update-status');
     });
 
 Route::prefix('panel/leave-requests')
@@ -296,10 +346,22 @@ Route::prefix('panel/messages')
 
 Route::prefix('panel/notifications')
     ->name('panel.notifications.')
-    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-manage-notifications'])
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-view-notifications'])
     ->group(function (): void {
         Route::get('/', [NotificationCrudController::class, 'index'])->name('index');
+    });
+
+Route::prefix('panel/notifications')
+    ->name('panel.notifications.')
+    ->middleware(['auth', 'verified', 'role:super-admin,admin,teacher', 'admin.ip', 'can:web-broadcast-notifications'])
+    ->group(function (): void {
         Route::post('/broadcast', [NotificationCrudController::class, 'broadcast'])->name('broadcast');
+    });
+
+Route::prefix('panel/notifications')
+    ->name('panel.notifications.')
+    ->middleware(['auth', 'verified', 'role:super-admin,admin', 'admin.ip', 'can:web-manage-notifications'])
+    ->group(function (): void {
         Route::get('/create', [NotificationCrudController::class, 'create'])->name('create');
         Route::post('/', [NotificationCrudController::class, 'store'])->name('store');
         Route::get('/{notification}/edit', [NotificationCrudController::class, 'edit'])->name('edit');

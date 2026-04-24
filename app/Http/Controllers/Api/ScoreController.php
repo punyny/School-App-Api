@@ -70,7 +70,9 @@ class ScoreController extends Controller
     {
         $this->authorize('create', Score::class);
 
-        $payload = $this->prepareScorePayloadForWrite($request->validated());
+        $validated = $request->validated();
+        $this->assertYearlyInputNotAllowed($validated['assessment_type'] ?? null);
+        $payload = $this->prepareScorePayloadForWrite($validated);
 
         if (! $this->canManageScoreTarget(
             $request->user(),
@@ -84,6 +86,7 @@ class ScoreController extends Controller
 
         $score = Score::query()->create($payload);
         $this->recomputeRankForBucket($score);
+        $this->syncDerivedYearlyAverageForScore($score);
         $score = $score->fresh();
 
         return response()->json([
@@ -96,7 +99,23 @@ class ScoreController extends Controller
     {
         $this->authorize('update', $score);
 
+        if ((string) $score->assessment_type === 'yearly') {
+            throw ValidationException::withMessages([
+                'assessment_type' => ['Yearly score is auto-calculated from monthly and semester records.'],
+            ]);
+        }
+
         $payload = $request->validated();
+        $this->assertYearlyInputNotAllowed($payload['assessment_type'] ?? null);
+
+        $oldYearlyContext = $this->yearlyContextFromValues(
+            (string) $score->assessment_type,
+            (int) $score->student_id,
+            (int) $score->class_id,
+            (int) $score->subject_id,
+            $score->academic_year,
+        );
+
         $targetClassId = (int) ($payload['class_id'] ?? $score->class_id);
         $targetStudentId = (int) ($payload['student_id'] ?? $score->student_id);
         $targetSubjectId = (int) ($payload['subject_id'] ?? $score->subject_id);
@@ -123,6 +142,8 @@ class ScoreController extends Controller
         $score->fill($payload)->save();
         $this->recomputeRankForBucketValues($oldBucket);
         $this->recomputeRankForBucket($score);
+        $this->syncDerivedYearlyAverageForContext($oldYearlyContext);
+        $this->syncDerivedYearlyAverageForScore($score);
 
         return response()->json([
             'message' => 'Score updated.',
@@ -134,9 +155,23 @@ class ScoreController extends Controller
     {
         $this->authorize('delete', $score);
 
+        if ((string) $score->assessment_type === 'yearly') {
+            throw ValidationException::withMessages([
+                'assessment_type' => ['Yearly score is auto-calculated from monthly and semester records.'],
+            ]);
+        }
+
         if (! $this->canManageScoreTarget($request->user(), (int) $score->class_id, (int) $score->subject_id)) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
+
+        $yearlyContext = $this->yearlyContextFromValues(
+            (string) $score->assessment_type,
+            (int) $score->student_id,
+            (int) $score->class_id,
+            (int) $score->subject_id,
+            $score->academic_year,
+        );
 
         $oldBucket = $this->scoreBucket([
             'class_id' => $score->class_id,
@@ -151,6 +186,7 @@ class ScoreController extends Controller
 
         $score->delete();
         $this->recomputeRankForBucketValues($oldBucket);
+        $this->syncDerivedYearlyAverageForContext($yearlyContext);
 
         return response()->json([
             'message' => 'Score deleted.',
@@ -299,6 +335,7 @@ class ScoreController extends Controller
         $created = 0;
         $updated = 0;
         $errors = [];
+        $yearlySyncContexts = [];
 
         foreach ($lines as $lineNumber => $line) {
             $cells = str_getcsv((string) $line);
@@ -314,6 +351,7 @@ class ScoreController extends Controller
                 $examScore = isset($row['exam_score']) ? (float) $row['exam_score'] : null;
                 $totalScore = isset($row['total_score']) ? (float) $row['total_score'] : null;
                 $assessmentType = (string) ($row['assessment_type'] ?? $row['type'] ?? '');
+                $this->assertYearlyInputNotAllowed($assessmentType);
                 $month = isset($row['month']) && $row['month'] !== '' ? (int) $row['month'] : null;
                 $semester = isset($row['semester']) && $row['semester'] !== '' ? (int) $row['semester'] : null;
                 $academicYear = isset($row['academic_year']) ? trim((string) $row['academic_year']) : null;
@@ -374,6 +412,7 @@ class ScoreController extends Controller
                 );
 
                 $this->recomputeRankForBucket($score);
+                $this->queueYearlySyncContextFromScore($yearlySyncContexts, $score);
 
                 if ($score->wasRecentlyCreated) {
                     $created++;
@@ -391,6 +430,8 @@ class ScoreController extends Controller
                 ];
             }
         }
+
+        $this->syncDerivedYearlyAveragesFromContexts($yearlySyncContexts);
 
         return response()->json([
             'message' => 'Score CSV import completed.',
@@ -565,26 +606,6 @@ class ScoreController extends Controller
             return $payload;
         }
 
-        if ($assessmentType === 'yearly') {
-            $yearlyComponents = $this->yearlyComponents(
-                $studentId,
-                $classId,
-                $subjectId,
-                $academicYear,
-                $excludeScoreId
-            );
-
-            if ($yearlyComponents !== []) {
-                $payload['total_score'] = round(array_sum($yearlyComponents) / count($yearlyComponents), 2);
-
-                return $payload;
-            }
-
-            $payload['total_score'] = $fallbackTotal;
-
-            return $payload;
-        }
-
         if (! array_key_exists('total_score', $payload) || $payload['total_score'] === null) {
             $payload['total_score'] = $effectiveExam;
         }
@@ -681,6 +702,208 @@ class ScoreController extends Controller
         $query->where('academic_year', $year);
     }
 
+    private function assertYearlyInputNotAllowed(mixed $assessmentType): void
+    {
+        $resolvedType = trim(strtolower((string) ($assessmentType ?? '')));
+        if ($resolvedType !== 'yearly') {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'assessment_type' => ['Yearly score is auto-calculated from monthly and semester records.'],
+        ]);
+    }
+
+    private function syncDerivedYearlyAverageForScore(Score $score): void
+    {
+        $context = $this->yearlyContextFromValues(
+            (string) $score->assessment_type,
+            (int) $score->student_id,
+            (int) $score->class_id,
+            (int) $score->subject_id,
+            $score->academic_year,
+        );
+
+        $this->syncDerivedYearlyAverageForContext($context);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $context
+     */
+    private function syncDerivedYearlyAverageForContext(?array $context): void
+    {
+        if ($context === null) {
+            return;
+        }
+
+        $studentId = (int) ($context['student_id'] ?? 0);
+        $classId = (int) ($context['class_id'] ?? 0);
+        $subjectId = (int) ($context['subject_id'] ?? 0);
+        $academicYear = $context['academic_year'] ?? null;
+        if ($studentId <= 0 || $classId <= 0 || $subjectId <= 0) {
+            return;
+        }
+
+        $components = $this->yearlyComponents(
+            $studentId,
+            $classId,
+            $subjectId,
+            $academicYear,
+        );
+
+        $yearlyQuery = Score::query()
+            ->where('student_id', $studentId)
+            ->where('class_id', $classId)
+            ->where('subject_id', $subjectId)
+            ->where('assessment_type', 'yearly');
+        $this->applyAcademicYearFilter($yearlyQuery, $academicYear);
+
+        $yearlyBucket = $this->scoreBucket([
+            'class_id' => $classId,
+            'subject_id' => $subjectId,
+            'assessment_type' => 'yearly',
+            'academic_year' => $academicYear,
+            'month' => null,
+            'semester' => null,
+            'quarter' => null,
+            'period' => null,
+        ]);
+
+        if ($components === []) {
+            $yearlyQuery->delete();
+            $this->recomputeRankForBucketValues($yearlyBucket);
+
+            return;
+        }
+
+        $average = round(array_sum($components) / count($components), 2);
+        $existingRows = $yearlyQuery->orderBy('id')->get();
+        $primary = $existingRows->first();
+
+        if ($primary === null) {
+            $primary = Score::query()->create([
+                'student_id' => $studentId,
+                'subject_id' => $subjectId,
+                'class_id' => $classId,
+                'assessment_type' => 'yearly',
+                'exam_score' => $average,
+                'total_score' => $average,
+                'month' => null,
+                'semester' => null,
+                'academic_year' => $this->normalizeAcademicYearValue($academicYear),
+                'quarter' => null,
+                'period' => null,
+                'grade' => $this->resolveGrade($average),
+                'rank_in_class' => null,
+            ]);
+        } else {
+            $primary->fill([
+                'assessment_type' => 'yearly',
+                'exam_score' => $average,
+                'total_score' => $average,
+                'month' => null,
+                'semester' => null,
+                'academic_year' => $this->normalizeAcademicYearValue($academicYear),
+                'quarter' => null,
+                'period' => null,
+                'grade' => $this->resolveGrade($average),
+                'rank_in_class' => null,
+            ])->save();
+
+            $duplicateIds = $existingRows
+                ->skip(1)
+                ->pluck('id')
+                ->map(fn ($id): int => (int) $id)
+                ->filter(fn (int $id): bool => $id > 0)
+                ->values()
+                ->all();
+
+            if ($duplicateIds !== []) {
+                Score::query()->whereIn('id', $duplicateIds)->delete();
+            }
+        }
+
+        $this->recomputeRankForBucketValues($yearlyBucket);
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $contexts
+     */
+    private function syncDerivedYearlyAveragesFromContexts(array $contexts): void
+    {
+        foreach ($contexts as $context) {
+            $this->syncDerivedYearlyAverageForContext($context);
+        }
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $contexts
+     */
+    private function queueYearlySyncContextFromScore(array &$contexts, Score $score): void
+    {
+        $context = $this->yearlyContextFromValues(
+            (string) $score->assessment_type,
+            (int) $score->student_id,
+            (int) $score->class_id,
+            (int) $score->subject_id,
+            $score->academic_year,
+        );
+
+        if ($context === null) {
+            return;
+        }
+
+        $contexts[$this->yearlyContextKey($context)] = $context;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function yearlyContextFromValues(
+        string $assessmentType,
+        int $studentId,
+        int $classId,
+        int $subjectId,
+        mixed $academicYear,
+    ): ?array {
+        if (! in_array($assessmentType, ['monthly', 'semester'], true)) {
+            return null;
+        }
+
+        if ($studentId <= 0 || $classId <= 0 || $subjectId <= 0) {
+            return null;
+        }
+
+        return [
+            'student_id' => $studentId,
+            'class_id' => $classId,
+            'subject_id' => $subjectId,
+            'academic_year' => $this->normalizeAcademicYearValue($academicYear),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function yearlyContextKey(array $context): string
+    {
+        $year = $this->normalizeAcademicYearValue($context['academic_year'] ?? null) ?? '';
+
+        return implode('|', [
+            (int) ($context['student_id'] ?? 0),
+            (int) ($context['class_id'] ?? 0),
+            (int) ($context['subject_id'] ?? 0),
+            $year,
+        ]);
+    }
+
+    private function normalizeAcademicYearValue(mixed $academicYear): ?string
+    {
+        $year = trim((string) ($academicYear ?? ''));
+
+        return $year !== '' ? $year : null;
+    }
+
     private function assertWithinSubjectFullScore(int $subjectId, float $examScore, float $totalScore): void
     {
         $subject = Subject::query()->find($subjectId);
@@ -705,11 +928,9 @@ class ScoreController extends Controller
     private function normalizeAssessmentPayload(array $payload, ?Score $existingScore = null): array
     {
         $assessmentType = (string) ($payload['assessment_type'] ?? $existingScore?->assessment_type ?? '');
-        if (! in_array($assessmentType, ['monthly', 'semester', 'yearly'], true)) {
+        if (! in_array($assessmentType, ['monthly', 'semester'], true)) {
             if (array_key_exists('semester', $payload) && $payload['semester'] !== null) {
                 $assessmentType = 'semester';
-            } elseif (array_key_exists('academic_year', $payload) && ! array_key_exists('month', $payload)) {
-                $assessmentType = 'yearly';
             } else {
                 $assessmentType = 'monthly';
             }
@@ -724,11 +945,8 @@ class ScoreController extends Controller
 
         if ($assessmentType === 'monthly') {
             $payload['semester'] = null;
-        } elseif ($assessmentType === 'semester') {
+        } else {
             $payload['month'] = null;
-        } elseif ($assessmentType === 'yearly') {
-            $payload['month'] = null;
-            $payload['semester'] = null;
         }
 
         return $payload;

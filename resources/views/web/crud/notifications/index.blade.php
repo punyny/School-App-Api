@@ -20,46 +20,48 @@
         <p class="flash-error">{{ $errors->first() }}</p>
     @endif
 
-    <form method="POST" action="{{ route('panel.notifications.broadcast') }}" class="panel panel-form panel-spaced" id="broadcast-form">
-        @csrf
-        <div class="panel-head">Quick Broadcast (Teacher / Student / Class)</div>
-        <p class="subtitle">ផ្ញើ notification ទៅ Teacher ម្នាក់, All Teachers, Student ម្នាក់, All Students, ឬ Class មួយ។</p>
-        <div class="form-grid">
-            <select name="audience" id="broadcast-audience" required>
-                <option value="">Select audience</option>
-                <option value="teacher" {{ old('audience') === 'teacher' ? 'selected' : '' }}>Teacher (one)</option>
-                <option value="all_teacher" {{ old('audience') === 'all_teacher' ? 'selected' : '' }}>All Teachers</option>
-                <option value="student" {{ old('audience') === 'student' ? 'selected' : '' }}>Student (one)</option>
-                <option value="all_student" {{ old('audience') === 'all_student' ? 'selected' : '' }}>All Students</option>
-                <option value="class" {{ old('audience') === 'class' ? 'selected' : '' }}>One Class</option>
-            </select>
-
-            <div id="broadcast-user-wrap">
-                <select name="user_id_select" id="broadcast-user">
-                    <option value="">Select user</option>
-                    @foreach(($broadcastUserOptions ?? []) as $option)
-                        <option value="{{ $option['id'] }}" data-role="{{ $option['role'] }}" {{ (string) old('user_id') === (string) $option['id'] ? 'selected' : '' }}>{{ $option['label'] }} - ID: {{ $option['id'] }}</option>
-                    @endforeach
+    @can('web-manage-notifications')
+        <form method="POST" action="{{ route('panel.notifications.broadcast') }}" class="panel panel-form panel-spaced" id="broadcast-form">
+            @csrf
+            <div class="panel-head">Quick Broadcast (Teacher / Student / Class)</div>
+            <p class="subtitle">ផ្ញើ notification ទៅ Teacher ម្នាក់, All Teachers, Student ម្នាក់, All Students, ឬ Class មួយ។</p>
+            <div class="form-grid">
+                <select name="audience" id="broadcast-audience" required>
+                    <option value="">Select audience</option>
+                    <option value="teacher" {{ old('audience') === 'teacher' ? 'selected' : '' }}>Teacher (one)</option>
+                    <option value="all_teacher" {{ old('audience') === 'all_teacher' ? 'selected' : '' }}>All Teachers</option>
+                    <option value="student" {{ old('audience') === 'student' ? 'selected' : '' }}>Student (one)</option>
+                    <option value="all_student" {{ old('audience') === 'all_student' ? 'selected' : '' }}>All Students</option>
+                    <option value="class" {{ old('audience') === 'class' ? 'selected' : '' }}>One Class</option>
                 </select>
-                <p class="text-muted subtitle-tight">If list is empty for your role, input user id below.</p>
-                <input type="number" name="user_id_manual" id="broadcast-user-manual" placeholder="Or input User ID manually" value="{{ old('user_id_manual') }}">
-            </div>
 
-            <div id="broadcast-class-wrap">
-                <select name="class_id" id="broadcast-class">
-                    <option value="">Select class</option>
-                    @foreach(($classOptions ?? []) as $option)
-                        <option value="{{ $option['id'] }}" {{ (string) old('class_id') === (string) $option['id'] ? 'selected' : '' }}>{{ $option['label'] }}</option>
-                    @endforeach
-                </select>
-            </div>
+                <div id="broadcast-user-wrap">
+                    <select name="user_id_select" id="broadcast-user">
+                        <option value="">Select user</option>
+                        @foreach(($broadcastUserOptions ?? []) as $option)
+                            <option value="{{ $option['id'] }}" data-role="{{ $option['role'] }}" {{ (string) old('user_id') === (string) $option['id'] ? 'selected' : '' }}>{{ $option['label'] }} - ID: {{ $option['id'] }}</option>
+                        @endforeach
+                    </select>
+                    <p class="text-muted subtitle-tight">If list is empty for your role, input user id below.</p>
+                    <input type="number" name="user_id_manual" id="broadcast-user-manual" placeholder="Or input User ID manually" value="{{ old('user_id_manual') }}">
+                </div>
 
-            <input type="text" name="title" value="{{ old('title') }}" placeholder="Title" required>
-            <textarea name="content" rows="3" placeholder="Message content" required>{{ old('content') }}</textarea>
-            <input type="datetime-local" name="send_at" value="{{ old('send_at') }}">
-        </div>
-        <button type="submit" class="btn-space-top">Send Broadcast</button>
-    </form>
+                <div id="broadcast-class-wrap">
+                    <select name="class_id" id="broadcast-class">
+                        <option value="">Select class</option>
+                        @foreach(($classOptions ?? []) as $option)
+                            <option value="{{ $option['id'] }}" {{ (string) old('class_id') === (string) $option['id'] ? 'selected' : '' }}>{{ $option['label'] }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <input type="text" name="title" value="{{ old('title') }}" placeholder="Title" required>
+                <textarea name="content" rows="3" placeholder="Message content" required>{{ old('content') }}</textarea>
+                <input type="datetime-local" name="send_at" value="{{ old('send_at') }}">
+            </div>
+            <button type="submit" class="btn-space-top">Send Broadcast</button>
+        </form>
+    @endcan
 
     <form method="GET" action="{{ route('panel.notifications.index') }}" class="panel panel-form panel-spaced">
         <div class="form-grid">

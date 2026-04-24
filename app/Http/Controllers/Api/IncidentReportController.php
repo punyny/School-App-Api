@@ -12,6 +12,7 @@ use App\Models\Notification as UserNotification;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\User;
+use App\Services\IncidentReportTelegramNotifier;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,10 @@ use Illuminate\Support\Facades\DB;
 
 class IncidentReportController extends Controller
 {
+    public function __construct(
+        private readonly IncidentReportTelegramNotifier $incidentReportTelegramNotifier,
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', IncidentReport::class);
@@ -267,5 +272,7 @@ class IncidentReportController extends Controller
                 'acknowledged' => (bool) $incidentReport->acknowledged,
             ]
         ));
+
+        $this->incidentReportTelegramNotifier->sendToStudentParents($incidentReport);
     }
 }

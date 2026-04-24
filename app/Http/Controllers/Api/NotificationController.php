@@ -79,10 +79,9 @@ class NotificationController extends Controller
         $payload = $request->validated();
         $target = User::query()->findOrFail($payload['user_id']);
 
-        if ($user->role !== 'super-admin') {
-            if (! $user->school_id || (int) $target->school_id !== (int) $user->school_id) {
-                return response()->json(['message' => 'Forbidden.'], 403);
-            }
+        $forbidden = $this->forbiddenNotificationTargetResponse($user, $target);
+        if ($forbidden instanceof JsonResponse) {
+            return $forbidden;
         }
 
         $notification = UserNotification::query()->create([
@@ -115,10 +114,9 @@ class NotificationController extends Controller
         if (isset($payload['user_id'])) {
             $target = User::query()->findOrFail((int) $payload['user_id']);
 
-            if ($user->role !== 'super-admin') {
-                if (! $user->school_id || (int) $target->school_id !== (int) $user->school_id) {
-                    return response()->json(['message' => 'Forbidden.'], 403);
-                }
+            $forbidden = $this->forbiddenNotificationTargetResponse($user, $target);
+            if ($forbidden instanceof JsonResponse) {
+                return $forbidden;
             }
 
             $notification->user_id = $target->id;
@@ -211,6 +209,20 @@ class NotificationController extends Controller
             }
         }
 
+        if ($actor->role === 'teacher') {
+            if (($payload['audience'] ?? '') !== 'class') {
+                return response()->json([
+                    'message' => 'Teachers can only broadcast to one class audience.',
+                ], 403);
+            }
+
+            if (! isset($payload['class_id'])) {
+                throw ValidationException::withMessages([
+                    'class_id' => ['class_id is required for teacher broadcast.'],
+                ]);
+            }
+        }
+
         if (
             empty($payload['user_ids'])
             && ! isset($payload['school_id'])
@@ -286,6 +298,17 @@ class NotificationController extends Controller
                 'send_at' => $payload['send_at'] ?? now()->toDateTimeString(),
             ],
         ], 202);
+    }
+
+    private function forbiddenNotificationTargetResponse(User $actor, User $target): ?JsonResponse
+    {
+        if ($actor->role !== 'super-admin') {
+            if (! $actor->school_id || (int) $target->school_id !== (int) $actor->school_id) {
+                return response()->json(['message' => 'Forbidden.'], 403);
+            }
+        }
+
+        return null;
     }
 
     private function canViewNotification(User $user, UserNotification $notification): bool

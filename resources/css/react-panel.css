@@ -1,0 +1,1430 @@
+.react-panel-page {
+    width: 100%;
+}
+
+.react-panel-main {
+    display: grid;
+    gap: 12px;
+}
+
+.react-template-dashboard {
+    border: 1px solid #ecd5e0;
+    border-radius: 18px;
+    background: #f3f2f3;
+    padding: 14px;
+    display: grid;
+    gap: 14px;
+}
+
+.react-template-topbar {
+    border: 1px solid #e9d8e2;
+    border-radius: 14px;
+    background: #fff;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.react-template-topbar-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 11px;
+}
+
+.react-template-menu {
+    width: 40px;
+    height: 40px;
+    border: 1px solid #f4cddd;
+    border-radius: 11px;
+    background: #fff0f7;
+    color: #d12970;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.react-template-menu svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2.3;
+    stroke-linecap: round;
+}
+
+.react-template-menu:hover {
+    transform: none;
+    box-shadow: none;
+    background: #ffe6f1;
+}
+
+.react-template-topbar h2 {
+    margin: 0;
+    color: #181b26;
+    font-size: 34px;
+    letter-spacing: -0.3px;
+}
+
+.react-template-topbar-side {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.react-template-notifications {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.react-template-notify-item {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid #ebdde5;
+    background: #f7f4f6;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.react-template-notify-icon {
+    width: 18px;
+    height: 18px;
+    color: #6f6470;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.react-template-notify-icon svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
+
+.react-template-notify-badge {
+    position: absolute;
+    top: -5px;
+    right: -4px;
+    min-width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    border: 2px solid #fff;
+    background: #df2b74;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 6px;
+}
+
+.react-template-user-chip {
+    border-left: 1px solid #efdfeb;
+    padding-left: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: #1d2029;
+}
+
+.react-template-user-greeting {
+    color: #8a7f88;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.react-template-user-chip strong {
+    font-size: 24px;
+    letter-spacing: -0.25px;
+}
+
+.react-template-user-avatar {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(145deg, #fcd4e7, #f7a4c9);
+    color: #63213f;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.react-template-shortcuts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.react-template-shortcuts a {
+    text-decoration: none;
+    border: 1px solid #f0d7e3;
+    border-radius: 999px;
+    background: #fff;
+    color: #7a3f5d;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 10px;
+}
+
+.react-template-shortcuts a:hover {
+    border-color: #e4a9c4;
+    background: #fff0f7;
+    color: #be1f64;
+}
+
+.react-template-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.react-template-kpi-card {
+    border: 1px solid #ebdce5;
+    border-radius: 14px;
+    background: #fff;
+    padding: 11px;
+    display: grid;
+    gap: 8px;
+}
+
+.react-template-kpi-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.react-template-kpi-value-block {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.react-template-kpi-value {
+    margin: 0;
+    color: #131720;
+    font-size: 44px;
+    line-height: 1;
+    letter-spacing: -0.6px;
+    font-weight: 800;
+}
+
+.react-template-kpi-change {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 800;
+}
+
+.react-template-kpi-change.up {
+    color: #1ea45f;
+}
+
+.react-template-kpi-change.down {
+    color: #de445d;
+}
+
+.react-template-kpi-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 11px;
+    border: 1px solid #f2dce7;
+    background: #fff5f9;
+    color: #db2e75;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.react-template-kpi-icon svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
+
+.react-template-kpi-label {
+    margin: 0;
+    color: #423841;
+    font-size: 25px;
+    font-weight: 700;
+    line-height: 1.15;
+}
+
+.react-template-mini-chart {
+    width: 100%;
+    height: 66px;
+}
+
+.react-template-mini-area {
+    fill: rgba(226, 73, 132, 0.2);
+}
+
+.react-template-mini-line {
+    fill: none;
+    stroke: #dd2f77;
+    stroke-width: 3;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+
+.react-template-chart-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px;
+}
+
+.react-template-chart-card {
+    border: 1px solid #ebdce5;
+    border-radius: 14px;
+    background: #fff;
+    padding: 14px;
+    display: grid;
+    gap: 12px;
+}
+
+.react-template-chart-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.react-template-chart-head h3 {
+    margin: 0;
+    color: #171a22;
+    font-size: 37px;
+    line-height: 1.05;
+}
+
+.react-template-chart-head p {
+    margin: 6px 0 0;
+    color: #6a646a;
+    font-size: 19px;
+}
+
+.react-template-period-pill {
+    border: 1px solid #e6d2df;
+    border-radius: 999px;
+    background: #fff;
+    color: #3f3440;
+    font-size: 14px;
+    font-weight: 800;
+    padding: 9px 13px;
+    white-space: nowrap;
+}
+
+.react-template-revenue-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.react-template-revenue-meta div {
+    border: 1px solid #eddfea;
+    border-radius: 10px;
+    background: #fbf9fb;
+    padding: 10px;
+}
+
+.react-template-revenue-meta span {
+    display: block;
+    color: #706272;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.react-template-revenue-meta strong {
+    display: block;
+    margin-top: 4px;
+    color: #171923;
+    font-size: 32px;
+    line-height: 1;
+}
+
+.react-template-revenue-chart,
+.react-template-bars-chart {
+    width: 100%;
+    height: 240px;
+}
+
+.react-template-grid-line {
+    stroke: #efe3ea;
+    stroke-width: 1;
+}
+
+.react-template-revenue-area-primary {
+    fill: rgba(224, 51, 118, 0.36);
+}
+
+.react-template-revenue-area-secondary {
+    fill: rgba(206, 146, 228, 0.35);
+}
+
+.react-template-revenue-line-primary {
+    fill: none;
+    stroke: #dc2d73;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.react-template-revenue-line-secondary {
+    fill: none;
+    stroke: #c184e8;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.react-template-tab-pills {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid #e5d4de;
+    border-radius: 999px;
+    padding: 4px;
+    background: #faf7f9;
+}
+
+.react-template-tab-pills span {
+    border-radius: 999px;
+    color: #726775;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 11px;
+}
+
+.react-template-tab-pills span.active {
+    background: #394658;
+    color: #fff;
+}
+
+.react-template-bar-baseline {
+    stroke: #d7ced4;
+    stroke-width: 1.25;
+}
+
+.react-template-bar-positive {
+    fill: #de3177;
+}
+
+.react-template-bar-negative {
+    fill: #4f5a6c;
+}
+
+.react-template-axis-labels {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.react-template-axis-labels span {
+    color: #706472;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.react-template-axis-days {
+    display: grid;
+    grid-template-columns: repeat(20, minmax(0, 1fr));
+    gap: 2px;
+}
+
+.react-template-axis-days span {
+    color: #766b77;
+    font-size: 10px;
+    text-align: center;
+}
+
+.react-panel-hero {
+    border-radius: 18px;
+    border: 1px solid #d7e1e7;
+    background: #f4f7f9;
+    padding: 16px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.react-panel-hero h1 {
+    margin: 0;
+    color: var(--text-main);
+    font-size: 24px;
+    line-height: 1.2;
+}
+
+.react-panel-hero p {
+    margin: 7px 0 0;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.react-panel-role {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid #ccd9e4;
+    color: #35546f;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    padding: 7px 11px;
+}
+
+.react-panel-nav-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.react-panel-nav-pill {
+    text-decoration: none;
+    border: 1px solid #d2deea;
+    border-radius: 999px;
+    background: #fff;
+    color: #425d77;
+    padding: 7px 11px;
+    font-size: 12px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: 0.15s ease;
+}
+
+.react-panel-nav-pill:hover {
+    border-color: #bfd4f7;
+    background: #ebf3ff;
+    color: #244ec4;
+}
+
+.react-panel-nav-pill.active {
+    border-color: #bdd4ff;
+    background: #eaf2ff;
+    color: #2347a8;
+}
+
+.react-panel-nav-pill-icon {
+    width: 15px;
+    height: 15px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: currentColor;
+    flex: 0 0 auto;
+}
+
+.react-panel-nav-pill-icon svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
+.react-panel-child-filter {
+    border: 1px solid #d7e1e7;
+    border-radius: 15px;
+    background: #f4f7f9;
+    padding: 12px 13px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.react-panel-child-filter h3 {
+    margin: 0;
+    color: var(--text-main);
+    font-size: 13px;
+}
+
+.react-panel-child-filter p {
+    margin: 4px 0 0;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.react-panel-child-filter form {
+    width: min(320px, 100%);
+}
+
+.react-panel-select {
+    width: 100%;
+    min-height: 43px;
+    border-radius: 10px;
+    border: 1px solid #cdd9e2;
+    background: #fff;
+    color: var(--text-main);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 11px;
+}
+
+.react-panel-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.react-panel-stat-card {
+    border: 1px solid #d7e1e7;
+    border-radius: 14px;
+    background: #f4f7f9;
+    padding: 10px;
+}
+
+.react-panel-stat-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.react-panel-stat-icon {
+    width: 29px;
+    height: 29px;
+    border-radius: 9px;
+    border: 1px solid #caddff;
+    background: #eaf2ff;
+    color: #2b4fae;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.react-panel-stat-icon svg {
+    width: 15px;
+    height: 15px;
+    fill: currentColor;
+}
+
+.react-panel-stat-label {
+    margin: 0;
+    color: #526274;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.react-panel-stat-value {
+    margin: 10px 0 0;
+    border-radius: 10px;
+    border: 1px solid #dce5eb;
+    background: #fff;
+    padding: 14px 12px;
+    color: var(--text-main);
+    font-size: 22px;
+    line-height: 1.05;
+    font-weight: 800;
+}
+
+.react-panel-school-wrap {
+    border: 1px solid #d7e1e7;
+    border-radius: 17px;
+    background: #f4f7f9;
+    padding: 12px;
+}
+
+.react-panel-school-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.react-panel-school-head h3 {
+    margin: 0;
+    color: var(--text-main);
+    font-size: 15px;
+}
+
+.react-panel-school-head p {
+    margin: 5px 0 0;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.react-panel-school-count {
+    border: 1px solid #d2deea;
+    border-radius: 999px;
+    background: #fff;
+    color: #40556a;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 6px 10px;
+    white-space: nowrap;
+}
+
+.react-panel-school-grid {
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 10px;
+}
+
+.react-panel-school-card {
+    border-radius: 13px;
+    border: 1px solid #dce5eb;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    transition: 0.16s ease;
+    overflow: hidden;
+}
+
+.react-panel-school-card:hover {
+    border-color: #bfd4f7;
+    background: #f7fbff;
+    transform: translateY(-1px);
+}
+
+.react-panel-school-card-link {
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    position: relative;
+    min-height: 340px;
+}
+
+.react-panel-school-bg-layer {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: linear-gradient(145deg, #eef5ff, #f9edf4);
+}
+
+.react-panel-school-bg-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transform: scale(1.08);
+    filter: blur(2.4px);
+}
+
+.react-panel-school-bg-fallback {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(145deg, #dce9ff, #f2dce8);
+    color: #294565;
+    font-size: 64px;
+    font-weight: 800;
+    letter-spacing: 0.35px;
+}
+
+.react-panel-school-bg-fallback.active {
+    display: inline-flex;
+}
+
+.react-panel-school-bg-scrim {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(14, 22, 35, 0.5) 0%, rgba(14, 22, 35, 0.7) 100%);
+}
+
+.react-panel-school-content {
+    position: relative;
+    z-index: 1;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+}
+
+.react-panel-school-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.react-panel-school-card-title-block {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    min-width: 0;
+}
+
+.react-panel-school-card-head h4 {
+    margin: 0;
+    color: #fff;
+    font-size: 25px;
+    line-height: 1.14;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+}
+
+.react-panel-school-card-head p {
+    margin: 4px 0 0;
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 14px;
+    font-weight: 700;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.33);
+}
+
+.react-panel-school-open {
+    border: 1px solid rgba(255, 255, 255, 0.62);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.35px;
+    padding: 5px 8px;
+    white-space: nowrap;
+}
+
+.react-panel-school-location {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 14px;
+    font-weight: 700;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.33);
+}
+
+.react-panel-school-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.react-panel-school-metric {
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    background: rgba(12, 22, 34, 0.28);
+    backdrop-filter: blur(1.5px);
+    padding: 7px 8px;
+}
+
+.react-panel-school-metric span {
+    display: block;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.react-panel-school-metric strong {
+    display: block;
+    margin-top: 3px;
+    color: #fff;
+    font-size: 15px;
+    line-height: 1;
+}
+
+.react-panel-school-admin {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 12px;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+}
+
+.react-panel-school-admin strong {
+    color: #fff;
+    font-weight: 700;
+}
+
+.react-panel-school-upload-form {
+    border-top: 1px solid #e5edf2;
+    background: #fbfdff;
+    padding: 10px 12px;
+    display: grid;
+    gap: 7px;
+}
+
+.react-panel-school-upload-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.react-panel-school-upload-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border: 1px dashed #cddce7;
+    border-radius: 10px;
+    padding: 7px 9px;
+    background: #fff;
+    cursor: pointer;
+}
+
+.react-panel-school-upload-picker span {
+    color: #4c6178;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.react-panel-school-upload-picker input {
+    max-width: 190px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font-size: 11px;
+    color: #54687d;
+}
+
+.react-panel-school-upload-btn {
+    min-height: 34px;
+    border: 1px solid #2f67f6;
+    border-radius: 9px;
+    background: linear-gradient(140deg, #2f67f6, #1e4fca);
+    color: #fff;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: none;
+}
+
+.react-panel-school-upload-btn:hover {
+    transform: none;
+    box-shadow: none;
+    filter: brightness(1.04);
+}
+
+.react-panel-school-upload-note {
+    margin: 0;
+    color: #63768a;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.react-panel-modules-wrap {
+    border: 1px solid #d7e1e7;
+    border-radius: 17px;
+    background: #f4f7f9;
+    padding: 11px;
+}
+
+.react-panel-modules-wrap-teacher {
+    border: 1px solid #d4e7dd;
+    border-radius: 20px;
+    background:
+        radial-gradient(130% 90% at 100% 0%, rgba(126, 211, 168, 0.18), rgba(126, 211, 168, 0) 65%),
+        linear-gradient(165deg, #f4fbf8 0%, #eef8f4 58%, #f7fbfc 100%);
+    padding: 14px;
+}
+
+.react-panel-modules-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.react-panel-modules-title {
+    margin: 0;
+    color: var(--text-main);
+    font-size: 15px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.react-panel-modules-subtitle {
+    margin: 6px 0 0;
+    color: #466057;
+    font-size: 12px;
+    line-height: 1.35;
+    max-width: 560px;
+}
+
+.react-panel-modules-title-icon {
+    width: 23px;
+    height: 23px;
+    border-radius: 8px;
+    border: 1px solid #caddff;
+    background: #eaf2ff;
+    color: #2b4fae;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.react-panel-modules-title-icon svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
+.react-panel-modules-count {
+    border: 1px solid #d2deea;
+    border-radius: 999px;
+    background: #fff;
+    color: #40556a;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 6px 10px;
+}
+
+.react-panel-modules-wrap-teacher .react-panel-modules-title {
+    font-size: 16px;
+    letter-spacing: -0.1px;
+}
+
+.react-panel-modules-wrap-teacher .react-panel-modules-title-icon {
+    border-color: #b8ddc7;
+    background: #dcf1e4;
+    color: #1f6d46;
+}
+
+.react-panel-modules-wrap-teacher .react-panel-modules-count {
+    border-color: #bddcc9;
+    background: #f7fcf9;
+    color: #2d5c43;
+}
+
+.react-panel-modules {
+    margin-top: 9px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 9px;
+}
+
+.react-panel-modules-teacher {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.react-panel-module-card {
+    border-radius: 12px;
+    border: 1px solid #dce5eb;
+    background: #fff;
+    padding: 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 132px;
+}
+
+.react-panel-module-card-teacher {
+    border-radius: 16px;
+    border: 1px solid #d4e7dc;
+    background: linear-gradient(152deg, #ffffff 0%, #f6fbf8 100%);
+    padding: 12px 13px;
+    min-height: 194px;
+    box-shadow: 0 8px 18px rgba(65, 106, 82, 0.08);
+}
+
+.react-panel-module-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.react-panel-module-meta {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 0;
+}
+
+.react-panel-module-number {
+    border: 1px solid #c7d6f4;
+    border-radius: 999px;
+    background: #eef4ff;
+    color: #31558f;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.35px;
+    padding: 4px 8px;
+}
+
+.react-panel-module-card-teacher .react-panel-module-number {
+    border-color: #bddcc9;
+    background: #e7f5ed;
+    color: #265f43;
+}
+
+.react-panel-module-metric-label {
+    color: #5f7282;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.react-panel-module-card-teacher .react-panel-module-metric-label {
+    color: #4e6c5a;
+}
+
+.react-panel-module-heading {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+}
+
+.react-panel-module-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    border: 1px solid #caddff;
+    background: #eaf2ff;
+    color: #2b4fae;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.react-panel-module-icon svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+.react-panel-module-card h4 {
+    margin: 0;
+    color: var(--text-main);
+    font-size: 14px;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.react-panel-module-card-teacher h4 {
+    font-size: 15px;
+    line-height: 1.25;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.react-panel-module-metric {
+    flex: 0 0 auto;
+    min-width: 44px;
+    min-height: 34px;
+    border-radius: 10px;
+    border: 1px solid #caddff;
+    background: #eaf2ff;
+    color: #2b4fae;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 10px;
+}
+
+.react-panel-module-metric strong {
+    font-size: 15px;
+    line-height: 1;
+    font-weight: 800;
+    color: currentColor;
+}
+
+.react-panel-module-card-teacher .react-panel-module-metric {
+    border-color: #bbdfca;
+    background: #e2f5e9;
+    color: #1f6d46;
+}
+
+.react-panel-module-description {
+    margin: 0;
+    color: #4b5d6c;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.react-panel-module-card-teacher .react-panel-module-description {
+    color: #425d4f;
+}
+
+.react-panel-module-links {
+    margin-top: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.react-panel-module-link {
+    text-decoration: none;
+    border: 1px solid #d2deea;
+    border-radius: 12px;
+    background: #f7fbff;
+    color: #304f67;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    transition: 0.16s ease;
+}
+
+.react-panel-module-links-teacher {
+    gap: 7px;
+}
+
+.react-panel-module-link-teacher {
+    width: auto;
+    min-height: 34px;
+    border-radius: 10px;
+    border-color: #c8dece;
+    background: #f4fbf7;
+    color: #285f46;
+    padding: 7px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    gap: 6px;
+}
+
+.react-panel-module-link-label {
+    line-height: 1.2;
+}
+
+.react-panel-module-link-arrow {
+    width: 15px;
+    height: 15px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: inherit;
+}
+
+.react-panel-module-link-arrow svg {
+    width: 15px;
+    height: 15px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.react-panel-module-link-icon {
+    width: 17px;
+    height: 17px;
+    color: #34526b;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.react-panel-module-link-icon svg {
+    width: 17px;
+    height: 17px;
+    fill: currentColor;
+}
+
+.react-panel-module-link:hover {
+    border-color: #bfd4f7;
+    background: #ebf3ff;
+    transform: translateY(-1px);
+}
+
+.react-panel-module-link:hover .react-panel-module-link-icon {
+    color: #244ec4;
+}
+
+.react-panel-module-link-teacher:hover {
+    border-color: #a7cfba;
+    background: #e8f5ed;
+    color: #1e563c;
+    transform: translateY(-1px);
+}
+
+.react-panel-module-link-teacher:focus-visible {
+    outline: 2px solid #6bac87;
+    outline-offset: 2px;
+}
+
+.react-panel-table-panel {
+    border: 1px solid #d7e1e7;
+    border-radius: 17px;
+    background: #f4f7f9;
+    overflow: hidden;
+}
+
+.react-panel-table-head {
+    padding: 12px;
+    border-bottom: 1px solid #dce4ea;
+}
+
+.react-panel-table-head h3 {
+    margin: 0;
+    color: var(--text-main);
+    font-size: 15px;
+}
+
+.react-panel-table-head p {
+    margin: 5px 0 0;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.react-panel-table-wrap {
+    overflow-x: auto;
+    background: #fff;
+}
+
+.react-panel-table {
+    width: 100%;
+    min-width: 640px;
+    border-collapse: collapse;
+}
+
+.react-panel-table th,
+.react-panel-table td {
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 1px solid #e5ecef;
+    padding: 10px 12px;
+    font-size: 13px;
+}
+
+.react-panel-table th {
+    color: #56687b;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.28px;
+    text-transform: uppercase;
+    background: #f8fbfd;
+}
+
+.react-panel-table tr:last-child td {
+    border-bottom: none;
+}
+
+.react-panel-cell-link {
+    text-decoration: none;
+    border-radius: 999px;
+    border: 1px solid #caddff;
+    background: #eaf2ff;
+    color: #2b4fae;
+    padding: 4px 9px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.react-panel-empty {
+    padding: 18px 12px;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 600;
+    background: #fff;
+}
+
+@media (max-width: 760px) {
+    .react-template-topbar h2 {
+        font-size: 24px;
+    }
+
+    .react-template-user-chip {
+        border-left: 0;
+        padding-left: 0;
+    }
+
+    .react-template-kpi-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .react-template-chart-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .react-template-kpi-value {
+        font-size: 32px;
+    }
+
+    .react-template-kpi-label {
+        font-size: 19px;
+    }
+
+    .react-template-chart-head h3 {
+        font-size: 27px;
+    }
+
+    .react-template-chart-head p {
+        font-size: 14px;
+    }
+
+    .react-template-axis-days {
+        grid-template-columns: repeat(10, minmax(0, 1fr));
+        row-gap: 4px;
+    }
+
+    .react-panel-hero {
+        flex-direction: column;
+    }
+
+    .react-panel-child-filter {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .react-panel-modules-head {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .react-panel-school-head {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .react-panel-school-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .react-panel-school-card-link {
+        min-height: 320px;
+    }
+
+    .react-panel-school-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .react-panel-modules {
+        grid-template-columns: 1fr;
+    }
+
+    .react-panel-modules-wrap-teacher {
+        padding: 12px;
+    }
+
+    .react-panel-module-card-teacher {
+        min-height: 0;
+    }
+
+    .react-panel-module-links-teacher {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .react-panel-module-link-teacher {
+        width: 100%;
+        justify-content: space-between;
+        padding: 9px 11px;
+    }
+}

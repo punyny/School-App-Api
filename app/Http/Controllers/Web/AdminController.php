@@ -71,15 +71,76 @@ class AdminController extends Controller
                 'student_profile_id' => $user->studentProfile?->id,
             ])->all();
 
-        return view('web.admin.dashboard', [
-            'teacherCount' => $teacherCount,
-            'studentCount' => $studentCount,
-            'parentCount' => $parentCount,
-            'classCount' => $classCount,
-            'attendanceByStatus' => $attendanceByStatus,
-            'attendanceTotal' => $attendanceTotal,
-            'topStudents' => $topStudents,
-            'recentUsers' => $recentUsers,
+        return view('web.panel', [
+            'title' => 'Admin Dashboard',
+            'subtitle' => 'School control overview with quick access to key modules.',
+            'stats' => [
+                ['label' => 'Students', 'value' => $studentCount],
+                ['label' => 'Teachers', 'value' => $teacherCount],
+                ['label' => 'Parents', 'value' => $parentCount],
+                ['label' => 'Classes', 'value' => $classCount],
+                ['label' => 'Present (P)', 'value' => $attendanceByStatus['P'] ?? 0],
+                ['label' => 'Absent (A)', 'value' => $attendanceByStatus['A'] ?? 0],
+                ['label' => 'Leave (L)', 'value' => $attendanceByStatus['L'] ?? 0],
+                ['label' => 'Total Attendance', 'value' => $attendanceTotal],
+            ],
+            'tableTitle' => 'Recent Students / Teachers',
+            'columns' => ['Name', 'Role', 'Email', 'Status', 'Reference'],
+            'rows' => array_map(static fn (array $row): array => [
+                (string) ($row['name'] ?? '-'),
+                ucfirst((string) ($row['role'] ?? '-')),
+                (string) ($row['email'] ?? '-'),
+                (bool) ($row['active'] ?? false) ? 'Active' : 'Inactive',
+                (string) ($row['student_profile_id'] ?? $row['id'] ?? '-'),
+            ], $recentUsers),
+            'modules' => [
+                [
+                    'number' => 1,
+                    'title' => 'Manage Users',
+                    'description' => 'Create and manage teacher, student, and parent accounts.',
+                    'metric_label' => 'Users',
+                    'metric_value' => $teacherCount + $studentCount + $parentCount,
+                    'links' => [
+                        ['label' => 'Users', 'url' => route('panel.users.index')],
+                        ['label' => 'Students', 'url' => route('admin.students.index')],
+                        ['label' => 'Students CRUD', 'url' => route('panel.students.index')],
+                        ['label' => 'New User', 'url' => route('panel.users.create')],
+                    ],
+                ],
+                [
+                    'number' => 2,
+                    'title' => 'Class Setup',
+                    'description' => 'Organize classes, subjects, and timetable flow.',
+                    'metric_label' => 'Classes',
+                    'metric_value' => $classCount,
+                    'links' => [
+                        ['label' => 'Classes', 'url' => route('panel.classes.index')],
+                        ['label' => 'Subjects', 'url' => route('panel.subjects.index')],
+                    ],
+                ],
+                [
+                    'number' => 3,
+                    'title' => 'Attendance & Scores',
+                    'description' => 'Monitor attendance and score records from one place.',
+                    'metric_label' => 'Records',
+                    'metric_value' => $attendanceTotal,
+                    'links' => [
+                        ['label' => 'Attendance', 'url' => route('panel.attendance.index')],
+                        ['label' => 'Scores', 'url' => route('panel.scores.index')],
+                    ],
+                ],
+                [
+                    'number' => 4,
+                    'title' => 'Top Students',
+                    'description' => 'Review highest score rows for quick recognition.',
+                    'metric_label' => 'Top Rows',
+                    'metric_value' => count($topStudents),
+                    'links' => [
+                        ['label' => 'Scores Table', 'url' => route('panel.scores.index')],
+                    ],
+                ],
+            ],
+            'panel' => 'admin',
         ]);
     }
 

@@ -3,8 +3,11 @@
 namespace App\Policies;
 
 use App\Models\Attendance;
+use App\Models\SubstituteTeacherAssignment;
+use App\Models\Timetable;
 use App\Models\User;
 use App\Policies\Concerns\ChecksSchoolMembership;
+use Illuminate\Support\Carbon;
 
 class AttendancePolicy
 {
@@ -22,11 +25,50 @@ class AttendancePolicy
         }
 
         if ($user->role === 'teacher') {
-            return (int) ($attendance->subject_id ?? 0) > 0
-                && $user->teachingClasses()
-                    ->where('classes.id', (int) $attendance->class_id)
-                    ->wherePivot('subject_id', (int) $attendance->subject_id)
-                    ->exists();
+            $subjectId = (int) ($attendance->subject_id ?? 0);
+            if ($subjectId <= 0) {
+                return false;
+            }
+
+            $isAssignedTeacher = $user->teachingClasses()
+                ->where('classes.id', (int) $attendance->class_id)
+                ->wherePivot('subject_id', (int) $attendance->subject_id)
+                ->exists();
+
+            if ($isAssignedTeacher) {
+                return true;
+            }
+
+            $dayOfWeek = strtolower(Carbon::parse((string) $attendance->date)->format('l'));
+            $timeStart = substr((string) $attendance->time_start, 0, 8);
+            $timeEndRaw = $attendance->time_end ? (string) $attendance->time_end : (string) $attendance->time_start;
+            $timeEnd = substr($timeEndRaw, 0, 8);
+
+            $hasSubstituteAccess = SubstituteTeacherAssignment::query()
+                ->where('class_id', (int) $attendance->class_id)
+                ->where('subject_id', $subjectId)
+                ->whereDate('date', Carbon::parse((string) $attendance->date)->toDateString())
+                ->where('time_start', '<=', $timeStart)
+                ->where('time_end', '>=', $timeEnd)
+                ->where(function ($scope) use ($user): void {
+                    $scope
+                        ->where('substitute_teacher_id', (int) $user->id)
+                        ->orWhere('original_teacher_id', (int) $user->id);
+                })
+                ->exists();
+
+            if ($hasSubstituteAccess) {
+                return true;
+            }
+
+            return Timetable::query()
+                ->where('class_id', (int) $attendance->class_id)
+                ->where('subject_id', $subjectId)
+                ->where('teacher_id', $user->id)
+                ->where('day_of_week', $dayOfWeek)
+                ->where('time_start', '<=', $timeStart)
+                ->where('time_end', '>=', $timeEnd)
+                ->exists();
         }
 
         if ($this->isStudentOwner($user, (int) $attendance->student_id)) {

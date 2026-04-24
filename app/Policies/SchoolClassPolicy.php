@@ -3,6 +3,8 @@
 namespace App\Policies;
 
 use App\Models\SchoolClass;
+use App\Models\SubstituteTeacherAssignment;
+use App\Models\Timetable;
 use App\Models\User;
 
 class SchoolClassPolicy
@@ -27,7 +29,22 @@ class SchoolClassPolicy
                 return false;
             }
 
-            return $user->teachingClasses()->where('classes.id', $schoolClass->id)->exists();
+            if ($user->teachingClasses()->where('classes.id', $schoolClass->id)->exists()) {
+                return true;
+            }
+
+            if (Timetable::query()->where('class_id', (int) $schoolClass->id)->where('teacher_id', (int) $user->id)->exists()) {
+                return true;
+            }
+
+            return SubstituteTeacherAssignment::query()
+                ->where('class_id', (int) $schoolClass->id)
+                ->where(function ($scope) use ($user): void {
+                    $scope
+                        ->where('substitute_teacher_id', (int) $user->id)
+                        ->orWhere('original_teacher_id', (int) $user->id);
+                })
+                ->exists();
         }
 
         if ($user->role === 'student') {

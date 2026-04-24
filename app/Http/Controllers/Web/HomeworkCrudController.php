@@ -36,6 +36,8 @@ class HomeworkCrudController extends Controller
             'items' => $payload['data'] ?? [],
             'meta' => $payload,
             'filters' => $filters,
+            'userRole' => $request->user()->normalizedRole(),
+            'authStudentId' => (int) ($request->user()->studentProfile?->id ?? 0),
         ] + $this->loadAcademicSelectOptions($request, $api, true, true, false));
     }
 
@@ -96,6 +98,35 @@ class HomeworkCrudController extends Controller
         return redirect()->away(route('panel.homeworks.index', [], false))->with('success', 'Homework deleted successfully.');
     }
 
+    public function submission(Request $request, int $homework, InternalApiClient $api): View|RedirectResponse
+    {
+        $result = $api->get($request, '/api/homeworks/'.$homework);
+
+        if ($result['status'] !== 200) {
+            return redirect()->away(route('panel.homeworks.index', [], false))->withErrors($this->extractErrors($result));
+        }
+
+        return view('web.crud.homeworks.submission', [
+            'item' => $result['data']['data'] ?? null,
+            'userRole' => $request->user()->normalizedRole(),
+            'authStudentId' => (int) ($request->user()->studentProfile?->id ?? 0),
+        ]);
+    }
+
+    public function submitSubmission(Request $request, int $homework, InternalApiClient $api): RedirectResponse
+    {
+        $payload = $this->validateSubmissionPayload($request);
+        $result = $api->post($request, '/api/homeworks/'.$homework.'/submissions', $payload);
+
+        if ($result['status'] !== 200) {
+            return back()->withInput()->withErrors($this->extractErrors($result));
+        }
+
+        return redirect()
+            ->away(route('panel.homeworks.submission', ['homework' => $homework], false))
+            ->with('success', 'បានដាក់កិច្ចការទៅគ្រូជោគជ័យ។');
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -108,6 +139,38 @@ class HomeworkCrudController extends Controller
             'question' => ['nullable', 'string'],
             'due_date' => ['nullable', 'date'],
             'due_time' => ['nullable', 'date_format:H:i'],
+            'file_attachments' => ['nullable', 'string'],
+            'attachments' => ['nullable', 'array'],
+            'attachments.*' => ['file', 'max:5120', 'mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx'],
+        ]);
+
+        $rawAttachments = trim((string) Arr::get($payload, 'file_attachments', ''));
+        if ($rawAttachments === '') {
+            $payload['file_attachments'] = [];
+        } else {
+            $payload['file_attachments'] = collect(explode(',', $rawAttachments))
+                ->map(fn (string $url): string => trim($url))
+                ->filter(fn (string $url): bool => $url !== '')
+                ->values()
+                ->all();
+        }
+
+        if (! $request->hasFile('attachments')) {
+            unset($payload['attachments']);
+        } else {
+            $payload['attachments'] = $request->file('attachments');
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function validateSubmissionPayload(Request $request): array
+    {
+        $payload = $request->validate([
+            'answer_text' => ['nullable', 'string'],
             'file_attachments' => ['nullable', 'string'],
             'attachments' => ['nullable', 'array'],
             'attachments.*' => ['file', 'max:5120', 'mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx'],

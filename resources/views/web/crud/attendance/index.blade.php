@@ -211,6 +211,9 @@
             @can('web-manage-attendance')
                 <a href="{{ route('panel.attendance.create') }}" class="primary">+ ស្រង់វត្តមានប្រចាំថ្ងៃ</a>
             @endcan
+            @can('web-manage-substitute-assignments')
+                <a href="{{ route('panel.substitute-assignments.index') }}">កំណត់គ្រូជំនួស</a>
+            @endcan
             <a href="{{ $csvUrl }}">ទាញយក CSV</a>
             <a href="{{ $pdfUrl }}">ទាញយក PDF</a>
         </div>

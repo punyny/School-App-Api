@@ -7,6 +7,7 @@ use App\Models\SchoolClass;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -213,5 +214,46 @@ class MessageApiTest extends TestCase
         $show->assertOk()
             ->assertJsonPath('data.read_meta.seen_count', 1);
         $this->assertNotNull($show->json('data.read_meta.direct_recipient_seen_at'));
+    }
+
+    public function test_message_send_can_trigger_telegram_delivery_when_recipient_has_chat_id(): void
+    {
+        $this->seed();
+
+        config([
+            'services.telegram.enabled' => true,
+            'services.telegram.bot_token' => 'test-bot-token',
+            'services.telegram.base_url' => 'https://api.telegram.org',
+            'services.telegram.parse_mode' => '',
+        ]);
+
+        Http::fake([
+            'https://api.telegram.org/*' => Http::response(['ok' => true, 'result' => ['message_id' => 123]], 200),
+        ]);
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $student = User::query()->where('email', 'student@example.com')->firstOrFail();
+        $student->forceFill(['telegram_chat_id' => '987654321'])->save();
+
+        Sanctum::actingAs($teacher);
+        $this->postJson('/api/messages', [
+            'receiver_id' => $student->id,
+            'content' => 'Telegram test message.',
+        ])->assertCreated();
+
+        Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+            if ($request->method() !== 'POST') {
+                return false;
+            }
+
+            if (! str_contains($request->url(), '/bottest-bot-token/sendMessage')) {
+                return false;
+            }
+
+            $data = $request->data();
+
+            return (string) ($data['chat_id'] ?? '') === '987654321'
+                && str_contains((string) ($data['text'] ?? ''), 'Telegram test message.');
+        });
     }
 }

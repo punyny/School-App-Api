@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class AttendanceApiTest extends TestCase
@@ -25,30 +26,95 @@ class AttendanceApiTest extends TestCase
         $this->assertNotNull($assignment);
         $student = Student::query()->where('class_id', (int) $assignment->class_id)->firstOrFail();
         $subjectId = (int) $assignment->subject_id;
+        $session = $this->activeSessionWindow();
         $token = $teacher->createToken('phpunit')->plainTextToken;
         $this->prepareStudentAndSessionForDate(
             student: $student,
             classId: (int) $assignment->class_id,
             subjectId: $subjectId,
             teacherId: (int) $teacher->id,
-            date: '2026-03-21',
-            timeStart: '08:00:00',
-            timeEnd: '09:00:00',
+            date: $session['date'],
+            timeStart: $session['time_start_seconds'],
+            timeEnd: $session['time_end_seconds'],
         );
 
         $response = $this->withToken($token)->postJson('/api/attendance', [
             'student_id' => $student->id,
             'class_id' => (int) $assignment->class_id,
             'subject_id' => $subjectId,
-            'date' => '2026-03-21',
-            'time_start' => '08:00',
-            'time_end' => '09:00',
+            'date' => $session['date'],
+            'time_start' => $session['time_start_short'],
+            'time_end' => $session['time_end_short'],
             'status' => 'P',
         ]);
 
         $response->assertCreated()
             ->assertJsonPath('data.status', 'P')
             ->assertJsonPath('data.subject_id', $subjectId);
+    }
+
+    public function test_teacher_create_attendance_sends_telegram_private_notification_to_parent(): void
+    {
+        $this->seed();
+
+        config([
+            'services.telegram.enabled' => true,
+            'services.telegram.bot_token' => 'test-bot-token',
+            'services.telegram.base_url' => 'https://api.telegram.org',
+            'services.telegram.parse_mode' => '',
+            'services.telegram.webhook_secret' => '',
+        ]);
+
+        Http::fake([
+            'https://api.telegram.org/*' => Http::response(['ok' => true, 'result' => ['message_id' => 778]], 200),
+        ]);
+
+        $parent = User::query()->where('email', 'parent@example.com')->firstOrFail();
+        $parent->forceFill(['telegram_chat_id' => '7469476859'])->save();
+        $student = $parent->children()->with('user')->firstOrFail();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $assignment = DB::table('teacher_class')
+            ->where('teacher_id', $teacher->id)
+            ->where('class_id', (int) $student->class_id)
+            ->first();
+        $this->assertNotNull($assignment);
+
+        $subjectId = (int) $assignment->subject_id;
+        $session = $this->activeSessionWindow();
+        $token = $teacher->createToken('phpunit')->plainTextToken;
+
+        $this->prepareStudentAndSessionForDate(
+            student: $student,
+            classId: (int) $student->class_id,
+            subjectId: $subjectId,
+            teacherId: (int) $teacher->id,
+            date: $session['date'],
+            timeStart: $session['time_start_seconds'],
+            timeEnd: $session['time_end_seconds'],
+        );
+
+        $response = $this->withToken($token)->postJson('/api/attendance', [
+            'student_id' => $student->id,
+            'class_id' => (int) $student->class_id,
+            'subject_id' => $subjectId,
+            'date' => $session['date'],
+            'time_start' => $session['time_start_short'],
+            'time_end' => $session['time_end_short'],
+            'status' => 'A',
+            'remarks' => 'Sick today',
+        ]);
+
+        $response->assertCreated();
+
+        Http::assertSent(function (\Illuminate\Http\Client\Request $request) use ($student): bool {
+            $data = $request->data();
+
+            return str_contains($request->url(), '/bottest-bot-token/sendMessage')
+                && (string) ($data['chat_id'] ?? '') === '7469476859'
+                && str_contains((string) ($data['text'] ?? ''), 'សិស្ស : '.(string) ($student->user?->name ?? ''))
+                && str_contains((string) ($data['text'] ?? ''), 'ស្ថានភាព : ❌ អវត្តមាន');
+        });
     }
 
     public function test_teacher_cannot_create_attendance_for_unassigned_class(): void
@@ -116,23 +182,24 @@ class AttendanceApiTest extends TestCase
 
         $this->assertCount(1, $students);
 
+        $session = $this->activeSessionWindow();
         $token = $teacher->createToken('phpunit')->plainTextToken;
         $this->prepareStudentAndSessionForDate(
             student: $students[0],
             classId: (int) $assignment->class_id,
             subjectId: $subjectId,
             teacherId: (int) $teacher->id,
-            date: '2026-03-12',
-            timeStart: '07:00:00',
-            timeEnd: '07:30:00',
+            date: $session['date'],
+            timeStart: $session['time_start_seconds'],
+            timeEnd: $session['time_end_seconds'],
         );
 
         $payload = [
             'class_id' => (int) $assignment->class_id,
             'subject_id' => $subjectId,
-            'date' => '2026-03-12',
-            'time_start' => '07:00',
-            'time_end' => '07:30',
+            'date' => $session['date'],
+            'time_start' => $session['time_start_short'],
+            'time_end' => $session['time_end_short'],
             'records' => [
                 [
                     'student_id' => $students[0]->id,
@@ -152,8 +219,8 @@ class AttendanceApiTest extends TestCase
             'student_id' => $students[0]->id,
             'class_id' => (int) $assignment->class_id,
             'subject_id' => $subjectId,
-            'date' => '2026-03-12',
-            'time_start' => '07:00:00',
+            'date' => $session['date'],
+            'time_start' => $session['time_start_seconds'],
             'status' => 'P',
             'remarks' => 'On time',
         ]);
@@ -161,9 +228,9 @@ class AttendanceApiTest extends TestCase
         $updateResponse = $this->withToken($token)->postJson('/api/attendance/daily-sheet', [
             'class_id' => (int) $assignment->class_id,
             'subject_id' => $subjectId,
-            'date' => '2026-03-12',
-            'time_start' => '07:00',
-            'time_end' => '07:30',
+            'date' => $session['date'],
+            'time_start' => $session['time_start_short'],
+            'time_end' => $session['time_end_short'],
             'records' => [
                 [
                     'student_id' => $students[0]->id,
@@ -181,11 +248,292 @@ class AttendanceApiTest extends TestCase
             'student_id' => $students[0]->id,
             'class_id' => (int) $assignment->class_id,
             'subject_id' => $subjectId,
-            'date' => '2026-03-12',
-            'time_start' => '07:00:00',
+            'date' => $session['date'],
+            'time_start' => $session['time_start_seconds'],
             'status' => 'L',
             'remarks' => 'Excused leave',
         ]);
+    }
+
+    public function test_teacher_cannot_mark_attendance_outside_live_session_time(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $assignment = DB::table('teacher_class')->where('teacher_id', $teacher->id)->first();
+        $this->assertNotNull($assignment);
+
+        $student = Student::query()->where('class_id', (int) $assignment->class_id)->firstOrFail();
+        $subjectId = (int) $assignment->subject_id;
+        $outsideDate = now()->subDay()->toDateString();
+
+        $this->prepareStudentAndSessionForDate(
+            student: $student,
+            classId: (int) $assignment->class_id,
+            subjectId: $subjectId,
+            teacherId: (int) $teacher->id,
+            date: $outsideDate,
+            timeStart: '08:00:00',
+            timeEnd: '09:00:00',
+        );
+
+        $token = $teacher->createToken('phpunit')->plainTextToken;
+        $response = $this->withToken($token)->postJson('/api/attendance', [
+            'student_id' => $student->id,
+            'class_id' => (int) $assignment->class_id,
+            'subject_id' => $subjectId,
+            'date' => $outsideDate,
+            'time_start' => '08:00',
+            'time_end' => '09:00',
+            'status' => 'P',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['date']);
+    }
+
+    public function test_substitute_teacher_can_save_daily_attendance_for_session(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $substitute = User::query()->where('email', 'teacher2@example.com')->firstOrFail();
+        $assignment = DB::table('teacher_class')->where('teacher_id', $teacher->id)->first();
+        $this->assertNotNull($assignment);
+
+        $classId = (int) $assignment->class_id;
+        $subjectId = (int) $assignment->subject_id;
+        $student = Student::query()->where('class_id', $classId)->firstOrFail();
+        $session = $this->activeSessionWindow();
+
+        DB::table('teacher_class')
+            ->where('teacher_id', $substitute->id)
+            ->where('class_id', $classId)
+            ->where('subject_id', $subjectId)
+            ->delete();
+
+        $this->prepareStudentAndSessionForDate(
+            student: $student,
+            classId: $classId,
+            subjectId: $subjectId,
+            teacherId: (int) $teacher->id,
+            date: $session['date'],
+            timeStart: $session['time_start_seconds'],
+            timeEnd: $session['time_end_seconds'],
+        );
+
+        DB::table('substitute_teacher_assignments')->insert([
+            'school_id' => (int) $teacher->school_id,
+            'class_id' => $classId,
+            'subject_id' => $subjectId,
+            'original_teacher_id' => (int) $teacher->id,
+            'substitute_teacher_id' => (int) $substitute->id,
+            'assigned_by_user_id' => (int) User::query()->where('email', 'admin@example.com')->value('id'),
+            'date' => $session['date'],
+            'time_start' => $session['time_start_seconds'],
+            'time_end' => $session['time_end_seconds'],
+            'notes' => 'Coverage for absent teacher',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $token = $substitute->createToken('phpunit')->plainTextToken;
+        $response = $this->withToken($token)->postJson('/api/attendance/daily-sheet', [
+            'class_id' => $classId,
+            'subject_id' => $subjectId,
+            'date' => $session['date'],
+            'time_start' => $session['time_start_short'],
+            'time_end' => $session['time_end_short'],
+            'records' => [
+                [
+                    'student_id' => $student->id,
+                    'status' => 'P',
+                ],
+            ],
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.created', 1);
+    }
+
+    public function test_original_teacher_cannot_mark_daily_sheet_when_substitute_is_assigned(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $substitute = User::query()->where('email', 'teacher2@example.com')->firstOrFail();
+        $assignment = DB::table('teacher_class')->where('teacher_id', $teacher->id)->first();
+        $this->assertNotNull($assignment);
+
+        $classId = (int) $assignment->class_id;
+        $subjectId = (int) $assignment->subject_id;
+        $student = Student::query()->where('class_id', $classId)->firstOrFail();
+        $session = $this->activeSessionWindow();
+
+        $this->prepareStudentAndSessionForDate(
+            student: $student,
+            classId: $classId,
+            subjectId: $subjectId,
+            teacherId: (int) $teacher->id,
+            date: $session['date'],
+            timeStart: $session['time_start_seconds'],
+            timeEnd: $session['time_end_seconds'],
+        );
+
+        DB::table('substitute_teacher_assignments')->insert([
+            'school_id' => (int) $teacher->school_id,
+            'class_id' => $classId,
+            'subject_id' => $subjectId,
+            'original_teacher_id' => (int) $teacher->id,
+            'substitute_teacher_id' => (int) $substitute->id,
+            'assigned_by_user_id' => (int) User::query()->where('email', 'admin@example.com')->value('id'),
+            'date' => $session['date'],
+            'time_start' => $session['time_start_seconds'],
+            'time_end' => $session['time_end_seconds'],
+            'notes' => 'Temporary substitution',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $token = $teacher->createToken('phpunit')->plainTextToken;
+        $response = $this->withToken($token)->postJson('/api/attendance/daily-sheet', [
+            'class_id' => $classId,
+            'subject_id' => $subjectId,
+            'date' => $session['date'],
+            'time_start' => $session['time_start_short'],
+            'time_end' => $session['time_end_short'],
+            'records' => [
+                [
+                    'student_id' => $student->id,
+                    'status' => 'P',
+                ],
+            ],
+        ]);
+
+        $response->assertForbidden();
+    }
+
+    public function test_substitute_teacher_can_access_tracking_context_for_assigned_session(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $substitute = User::query()->where('email', 'teacher2@example.com')->firstOrFail();
+        $assignment = DB::table('teacher_class')->where('teacher_id', $teacher->id)->first();
+        $this->assertNotNull($assignment);
+
+        $classId = (int) $assignment->class_id;
+        $subjectId = (int) $assignment->subject_id;
+        $student = Student::query()->where('class_id', $classId)->firstOrFail();
+        $session = $this->activeSessionWindow();
+
+        DB::table('teacher_class')
+            ->where('teacher_id', $substitute->id)
+            ->where('class_id', $classId)
+            ->delete();
+
+        DB::table('timetables')
+            ->where('teacher_id', $substitute->id)
+            ->where('class_id', $classId)
+            ->delete();
+
+        $this->prepareStudentAndSessionForDate(
+            student: $student,
+            classId: $classId,
+            subjectId: $subjectId,
+            teacherId: (int) $teacher->id,
+            date: $session['date'],
+            timeStart: $session['time_start_seconds'],
+            timeEnd: $session['time_end_seconds'],
+        );
+
+        DB::table('substitute_teacher_assignments')->insert([
+            'school_id' => (int) $teacher->school_id,
+            'class_id' => $classId,
+            'subject_id' => $subjectId,
+            'original_teacher_id' => (int) $teacher->id,
+            'substitute_teacher_id' => (int) $substitute->id,
+            'assigned_by_user_id' => (int) User::query()->where('email', 'admin@example.com')->value('id'),
+            'date' => $session['date'],
+            'time_start' => $session['time_start_seconds'],
+            'time_end' => $session['time_end_seconds'],
+            'notes' => 'Substitute tracking test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $token = $substitute->createToken('phpunit')->plainTextToken;
+        $response = $this->withToken($token)->getJson('/api/attendance/tracking-context?class_id='.$classId.'&date='.$session['date']);
+
+        $response->assertOk()
+            ->assertJsonPath('data.class_id', $classId)
+            ->assertJsonFragment([
+                'subject_id' => $subjectId,
+                'time_start' => $session['time_start_short'],
+                'time_end' => $session['time_end_short'],
+            ]);
+    }
+
+    public function test_substitute_teacher_can_see_assigned_class_in_class_list(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $substitute = User::query()->where('email', 'teacher2@example.com')->firstOrFail();
+        $assignment = DB::table('teacher_class')->where('teacher_id', $teacher->id)->first();
+        $this->assertNotNull($assignment);
+
+        $classId = (int) $assignment->class_id;
+        $subjectId = (int) $assignment->subject_id;
+        $student = Student::query()->where('class_id', $classId)->firstOrFail();
+        $session = $this->activeSessionWindow();
+
+        DB::table('teacher_class')
+            ->where('teacher_id', $substitute->id)
+            ->where('class_id', $classId)
+            ->delete();
+
+        DB::table('timetables')
+            ->where('teacher_id', $substitute->id)
+            ->where('class_id', $classId)
+            ->delete();
+
+        $this->prepareStudentAndSessionForDate(
+            student: $student,
+            classId: $classId,
+            subjectId: $subjectId,
+            teacherId: (int) $teacher->id,
+            date: $session['date'],
+            timeStart: $session['time_start_seconds'],
+            timeEnd: $session['time_end_seconds'],
+        );
+
+        DB::table('substitute_teacher_assignments')->insert([
+            'school_id' => (int) $teacher->school_id,
+            'class_id' => $classId,
+            'subject_id' => $subjectId,
+            'original_teacher_id' => (int) $teacher->id,
+            'substitute_teacher_id' => (int) $substitute->id,
+            'assigned_by_user_id' => (int) User::query()->where('email', 'admin@example.com')->value('id'),
+            'date' => $session['date'],
+            'time_start' => $session['time_start_seconds'],
+            'time_end' => $session['time_end_seconds'],
+            'notes' => 'Substitute class visibility test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $token = $substitute->createToken('phpunit')->plainTextToken;
+        $response = $this->withToken($token)->getJson('/api/classes?per_page=100');
+        $response->assertOk();
+
+        $classIds = collect($response->json('data', []))
+            ->map(fn (array $row): int => (int) ($row['id'] ?? 0))
+            ->filter(fn (int $id): bool => $id > 0)
+            ->values()
+            ->all();
+
+        $this->assertContains($classId, $classIds);
     }
 
     public function test_monthly_report_groups_absence_by_student_subject_and_time(): void
@@ -239,6 +587,22 @@ class AttendanceApiTest extends TestCase
         $this->seed();
 
         $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $assignment = DB::table('teacher_class')->where('teacher_id', $teacher->id)->first();
+        $this->assertNotNull($assignment);
+
+        $student = Student::query()->where('class_id', (int) $assignment->class_id)->firstOrFail();
+        Attendance::query()->create([
+            'student_id' => $student->id,
+            'class_id' => (int) $assignment->class_id,
+            'subject_id' => (int) $assignment->subject_id,
+            'date' => now()->toDateString(),
+            'time_start' => '08:00:00',
+            'time_end' => '09:00:00',
+            'status' => 'A',
+            'remarks' => 'Admin monthly summary check',
+        ]);
+
         $token = $admin->createToken('phpunit')->plainTextToken;
 
         $response = $this->withToken($token)->getJson('/api/attendance/monthly-report?month='.now()->format('Y-m'));
@@ -373,8 +737,8 @@ class AttendanceApiTest extends TestCase
 
         SchoolClass::query()->whereKey($classId)->update([
             'study_days' => json_encode([$dayOfWeek], JSON_THROW_ON_ERROR),
-            'study_time_start' => '06:00:00',
-            'study_time_end' => '18:00:00',
+            'study_time_start' => '00:00:00',
+            'study_time_end' => '23:59:00',
         ]);
 
         DB::table('timetables')->updateOrInsert(
@@ -391,5 +755,26 @@ class AttendanceApiTest extends TestCase
                 'created_at' => now(),
             ]
         );
+    }
+
+    /**
+     * @return array{date:string,time_start_short:string,time_end_short:string,time_start_seconds:string,time_end_seconds:string}
+     */
+    private function activeSessionWindow(): array
+    {
+        $start = now()->subMinutes(5)->second(0);
+        $end = now()->addMinutes(25)->second(0);
+
+        if ($end->lessThanOrEqualTo($start)) {
+            $end = $start->copy()->addMinutes(30);
+        }
+
+        return [
+            'date' => $start->toDateString(),
+            'time_start_short' => $start->format('H:i'),
+            'time_end_short' => $end->format('H:i'),
+            'time_start_seconds' => $start->format('H:i:s'),
+            'time_end_seconds' => $end->format('H:i:s'),
+        ];
     }
 }

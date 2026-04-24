@@ -102,9 +102,11 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('web-manage-classes', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin']));
         Gate::define('web-manage-subjects', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin']));
         Gate::define('web-manage-timetables', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher']));
-        Gate::define('web-manage-students', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin']));
+        Gate::define('web-manage-students', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher']));
         Gate::define('web-manage-attendance', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher']));
-        Gate::define('web-manage-homeworks', fn (User $user): bool => $isRole($user, 'teacher'));
+        Gate::define('web-manage-substitute-assignments', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin']));
+        Gate::define('web-manage-homeworks', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher']));
+        Gate::define('web-view-homeworks', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher', 'student', 'parent']));
         Gate::define('web-manage-scores', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher']));
         Gate::define('web-view-leave-requests', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher', 'student', 'parent']));
         Gate::define('web-create-leave-requests', fn (User $user): bool => $inRoles($user, ['student', 'parent']));
@@ -112,10 +114,12 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('web-view-messages', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher', 'student', 'parent']));
         Gate::define('web-create-messages', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher', 'student']));
         Gate::define('web-manage-messages', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher']));
-        Gate::define('web-manage-notifications', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher']));
+        Gate::define('web-view-notifications', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher']));
+        Gate::define('web-manage-notifications', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin']));
+        Gate::define('web-broadcast-notifications', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher']));
         Gate::define('web-manage-incident-reports', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher']));
         Gate::define('web-view-announcements', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher', 'student', 'parent']));
-        Gate::define('web-manage-announcements', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin']));
+        Gate::define('web-manage-announcements', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin', 'teacher']));
         Gate::define('web-view-audit-logs', fn (User $user): bool => $inRoles($user, ['super-admin', 'admin']));
     }
 }

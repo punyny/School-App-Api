@@ -7,6 +7,7 @@ use App\Models\Student;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -62,5 +63,50 @@ class IncidentReportApiTest extends TestCase
         ]);
 
         $response->assertForbidden();
+    }
+
+    public function test_teacher_create_incident_sends_telegram_private_notification_to_parent(): void
+    {
+        $this->seed();
+
+        config([
+            'services.telegram.enabled' => true,
+            'services.telegram.bot_token' => 'test-bot-token',
+            'services.telegram.base_url' => 'https://api.telegram.org',
+            'services.telegram.parse_mode' => '',
+            'services.telegram.webhook_secret' => '',
+        ]);
+
+        Http::fake([
+            'https://api.telegram.org/*' => Http::response(['ok' => true, 'result' => ['message_id' => 612]], 200),
+        ]);
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $parent = User::query()->where('email', 'parent@example.com')->firstOrFail();
+        $parent->forceFill(['telegram_chat_id' => '7469476859'])->save();
+        $student = $parent->children()->with(['user', 'class.school'])->firstOrFail();
+
+        Sanctum::actingAs($teacher);
+        $response = $this->postJson('/api/incident-reports', [
+            'student_id' => $student->id,
+            'description' => 'Late to class with no uniform',
+            'type' => 'Discipline',
+            'date' => '2026-04-20',
+        ]);
+
+        $response->assertCreated();
+
+        Http::assertSent(function (\Illuminate\Http\Client\Request $request) use ($student): bool {
+            $data = $request->data();
+            $text = (string) ($data['text'] ?? '');
+
+            return str_contains($request->url(), '/bottest-bot-token/sendMessage')
+                && (string) ($data['chat_id'] ?? '') === '7469476859'
+                && str_contains($text, 'របាយការណ៍បញ្ហាសិស្ស')
+                && str_contains($text, 'សិស្ស : '.(string) ($student->user?->name ?? ''))
+                && str_contains($text, 'ថ្នាក់ : ')
+                && str_contains($text, 'សាលា : ')
+                && str_contains($text, 'ពិពណ៌នា : Late to class with no uniform');
+        });
     }
 }

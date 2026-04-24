@@ -11,6 +11,7 @@ class School extends Model
         'name',
         'school_code',
         'location',
+        'image_url',
         'config_details',
     ];
 

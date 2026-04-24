@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Events\RealtimeNotificationBroadcasted;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\MessageStoreRequest;
+use App\Jobs\SendTelegramMessageJob;
 use App\Models\Message;
 use App\Models\MessageRead;
 use App\Models\Notification as UserNotification;
@@ -560,6 +561,74 @@ class MessageController extends Controller
                 'receiver_id' => $message->receiver_id ? (int) $message->receiver_id : null,
             ]
         ));
+
+        $this->queueTelegramMessageDeliveries($message, $recipientIds);
+    }
+
+    /**
+     * @param  array<int, int>  $recipientIds
+     */
+    private function queueTelegramMessageDeliveries(Message $message, array $recipientIds): void
+    {
+        if (! (bool) config('services.telegram.enabled', false)) {
+            return;
+        }
+
+        $message->loadMissing(['sender:id,name', 'class:id,name']);
+        $senderName = trim((string) data_get($message, 'sender.name', 'System'));
+        $className = trim((string) data_get($message, 'class.name', ''));
+        $contentPreview = trim(mb_strimwidth((string) $message->content, 0, 500, '...'));
+        $scopeLabel = $message->receiver_id
+            ? 'direct'
+            : 'class'.($className !== '' ? ' ('.$className.')' : '');
+
+        $recipients = User::query()
+            ->whereIn('id', $recipientIds)
+            ->whereNotNull('telegram_chat_id')
+            ->where('telegram_chat_id', '!=', '')
+            ->get(['id', 'telegram_chat_id', 'name']);
+
+        foreach ($recipients as $recipient) {
+            $recipientName = trim((string) ($recipient->name ?? ''));
+            $telegramText = $this->buildTelegramMessageText(
+                senderName: $senderName !== '' ? $senderName : 'System',
+                contentPreview: $contentPreview,
+                scopeLabel: $scopeLabel,
+                recipientName: $recipientName,
+            );
+
+            SendTelegramMessageJob::dispatch(
+                chatId: (string) $recipient->telegram_chat_id,
+                text: $telegramText,
+                meta: [
+                    'source' => 'message',
+                    'message_id' => (int) $message->id,
+                    'recipient_user_id' => (int) $recipient->id,
+                ]
+            );
+        }
+    }
+
+    private function buildTelegramMessageText(
+        string $senderName,
+        string $contentPreview,
+        string $scopeLabel,
+        string $recipientName
+    ): string {
+        $lines = [
+            '[Sala Digital]',
+            'New message',
+            'From: '.$senderName,
+            'Type: '.$scopeLabel,
+        ];
+
+        if ($recipientName !== '') {
+            $lines[] = 'To: '.$recipientName;
+        }
+
+        $lines[] = 'Content: '.$contentPreview;
+
+        return implode("\n", $lines);
     }
 
     private function normalizeRole(string $role): string

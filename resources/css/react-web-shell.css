@@ -1,0 +1,672 @@
+:root {
+    --bg-page-1: #eef3f8;
+    --bg-page-mid: #f5f8fc;
+    --bg-page-2: #e9eef6;
+    --bg-accent-1: rgba(147, 197, 253, 0.28);
+    --bg-accent-2: rgba(203, 213, 225, 0.35);
+    --frame-bg: rgba(250, 252, 255, 0.93);
+    --surface: #ffffff;
+    --surface-soft: #f4f7f9;
+    --line: #d6e1e8;
+    --text-main: #1c2a37;
+    --text-muted: #5c6f82;
+    --primary: #2f67f6;
+    --primary-2: #1e4fca;
+    --accent-blue: #2563eb;
+    --accent-orange: #ea580c;
+    --accent-green: #16a34a;
+    --danger: #dc2626;
+    --shadow-lg: 0 24px 52px rgba(15, 23, 42, 0.12);
+    --shadow-sm: 0 10px 24px rgba(15, 23, 42, 0.07);
+    --title-gradient: linear-gradient(120deg, #1e3a8a 0%, #1d4ed8 46%, #2563eb 100%);
+
+    --bg-1: #eef3f8;
+    --bg-mid: #f5f8fc;
+    --bg-2: #e9eef6;
+}
+
+html[data-theme="dark"] {
+    --bg-page-1: #020817;
+    --bg-page-mid: #0b1220;
+    --bg-page-2: #111827;
+    --bg-accent-1: rgba(96, 165, 250, 0.12);
+    --bg-accent-2: rgba(148, 163, 184, 0.1);
+    --frame-bg: rgba(2, 6, 23, 0.9);
+    --surface: #0f172a;
+    --surface-soft: #111d36;
+    --line: #233148;
+    --text-main: #dbe6f4;
+    --text-muted: #94a9c3;
+    --primary: #60a5fa;
+    --primary-2: #3b82f6;
+    --accent-blue: #60a5fa;
+    --accent-orange: #fb923c;
+    --accent-green: #4ade80;
+    --danger: #f87171;
+    --shadow-lg: 0 22px 48px rgba(2, 6, 23, 0.56);
+    --shadow-sm: 0 12px 22px rgba(2, 6, 23, 0.34);
+    --title-gradient: linear-gradient(120deg, #dbeafe 0%, #93c5fd 52%, #60a5fa 100%);
+
+    --bg-1: #020817;
+    --bg-mid: #0b1220;
+    --bg-2: #111827;
+}
+
+.react-web-shell {
+    display: grid;
+    gap: 12px;
+}
+
+.react-web-shell-header {
+    border: 1px solid #d6e1e8;
+    border-radius: 16px;
+    background: #f4f7f9;
+    box-shadow: var(--shadow-sm);
+    padding: 12px 14px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.react-web-shell-header-copy {
+    display: grid;
+    gap: 4px;
+}
+
+.react-web-shell-header h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--text-main);
+}
+
+.react-web-shell-header p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.react-web-shell-header-right {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.react-web-shell-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.react-web-shell-actions a {
+    text-decoration: none;
+    border: 1px solid #ccdaea;
+    border-radius: 999px;
+    background: #fff;
+    color: #3a5772;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 9px;
+    transition: 0.15s ease;
+}
+
+.react-web-shell-actions a:hover {
+    border-color: #b8ccf5;
+    background: #ecf3ff;
+    color: #244ec4;
+}
+
+.react-web-shell-header span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #c5d8f5;
+    border-radius: 999px;
+    background: #eaf2ff;
+    color: #2b4fae;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    padding: 6px 10px;
+}
+
+.react-web-shell-body > #web-legacy-content {
+    width: 100%;
+    display: block;
+}
+
+.react-web-shell-body [data-react-shell-hidden="true"] {
+    display: none !important;
+}
+
+#web-legacy-content {
+    display: none;
+}
+
+.react-web-shell-body .shell {
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.react-web-shell-body .app-frame {
+    border: 1px solid #d6e1e8;
+    border-radius: 20px;
+    box-shadow: var(--shadow-sm);
+    background: var(--frame-bg);
+    backdrop-filter: none;
+}
+
+.react-web-shell-body .workspace-shell {
+    grid-template-columns: 250px minmax(0, 1fr);
+    min-height: calc(100vh - 130px);
+}
+
+.react-web-shell-body .global-sidebar {
+    border-right: 1px solid #d6e1e8;
+    background: #f4f7f9;
+    padding: 14px 12px;
+}
+
+.react-web-shell-body .sidebar-brand {
+    border-bottom-color: #d6e1e8;
+}
+
+.react-web-shell-body .sidebar-user-card {
+    border-color: #d6e1e8;
+    background: #fff;
+}
+
+.react-web-shell-body .sidebar-user-card:hover {
+    border-color: #cadeff;
+    background: #eef5ff;
+}
+
+.react-web-shell-body .sidebar-user-role {
+    color: #4c6178;
+}
+
+.react-web-shell-body .sidebar-user-email {
+    color: #6f7f8f;
+}
+
+.react-web-shell-body .brand-mark {
+    border-radius: 10px;
+    background: linear-gradient(140deg, #2f67f6, #1e4fca);
+    box-shadow: 0 10px 18px rgba(30, 79, 202, 0.22);
+}
+
+.react-web-shell-body .global-sidebar h3 {
+    color: #5f7388;
+    letter-spacing: 0.35px;
+}
+
+.react-web-shell-body .sidebar-group {
+    border-color: #d9e3ea;
+    background: #fff;
+}
+
+.react-web-shell-body .sidebar-group-toggle {
+    color: #4a6177;
+}
+
+.react-web-shell-body .sidebar-group-toggle:hover {
+    background: #f4f7f9;
+}
+
+.react-web-shell-body .sidebar-links {
+    gap: 5px;
+}
+
+.react-web-shell-body .sidebar-links a {
+    border-radius: 10px;
+    border: 1px solid #dde5ea;
+    background: #fff;
+    color: #4c6178;
+    padding: 10px 10px;
+    box-shadow: none;
+}
+
+.react-web-shell-body .sidebar-links a:hover {
+    border-color: #cadeff;
+    background: #eef5ff;
+    color: #2a4ea6;
+}
+
+.react-web-shell-body .sidebar-links a.active {
+    border-color: #bdd4ff;
+    background: #eaf2ff;
+    color: #2347a8;
+    box-shadow: none;
+}
+
+.react-web-shell-body .nav-icon {
+    color: inherit;
+}
+
+.react-web-shell-body .workspace-main {
+    padding: 16px;
+}
+
+.react-web-shell-body .global-head {
+    border: 1px solid #d6e1e8;
+    border-radius: 14px;
+    background: #f4f7f9;
+    box-shadow: none;
+    margin-bottom: 12px;
+    padding: 11px 12px;
+}
+
+.react-web-shell-body .global-search input,
+.react-web-shell-body input[type="text"],
+.react-web-shell-body input[type="email"],
+.react-web-shell-body input[type="number"],
+.react-web-shell-body input[type="password"],
+.react-web-shell-body input[type="date"],
+.react-web-shell-body select,
+.react-web-shell-body textarea {
+    border: 1px solid #cfdbe5;
+    border-radius: 10px;
+    background: #fff;
+    color: var(--text-main);
+    font-family: inherit;
+}
+
+.react-web-shell-body .global-search input {
+    background: #fff;
+}
+
+.react-web-shell-body input:focus,
+.react-web-shell-body select:focus,
+.react-web-shell-body textarea:focus {
+    outline: none;
+    border-color: #90b4ff;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
+}
+
+.react-web-shell-body button,
+.react-web-shell-body .button,
+.react-web-shell-body .submit-button,
+.react-web-shell-body .mini-btn.primary,
+.react-web-shell-body .button-primary {
+    border: 1px solid #2f67f6;
+    border-radius: 10px;
+    background: linear-gradient(140deg, #2f67f6, #1e4fca);
+    color: #fff;
+    box-shadow: none;
+    cursor: pointer;
+}
+
+.react-web-shell-body button:hover,
+.react-web-shell-body .button:hover,
+.react-web-shell-body .submit-button:hover,
+.react-web-shell-body .mini-btn.primary:hover,
+.react-web-shell-body .button-primary:hover {
+    transform: none;
+    box-shadow: none;
+    filter: brightness(1.03);
+}
+
+.react-web-shell-body .button-secondary,
+.react-web-shell-body .mini-btn,
+.react-web-shell-body .head-link,
+.react-web-shell-body .nav a,
+.react-web-shell-body .mini-actions a,
+.react-web-shell-body .workflow-link,
+.react-web-shell-body .attendance-actions a {
+    border: 1px solid #ccdaea;
+    border-radius: 10px;
+    background: #fff;
+    color: #4a6077;
+    text-decoration: none;
+    box-shadow: none;
+}
+
+.react-web-shell-body .button-secondary:hover,
+.react-web-shell-body .mini-btn:hover,
+.react-web-shell-body .head-link:hover,
+.react-web-shell-body .nav a:hover,
+.react-web-shell-body .mini-actions a:hover,
+.react-web-shell-body .workflow-link:hover,
+.react-web-shell-body .attendance-actions a:hover {
+    border-color: #bfd4f7;
+    background: #ebf3ff;
+    color: #244ec4;
+}
+
+.react-web-shell-body .mini-btn-danger,
+.react-web-shell-body .toolbar-button-danger,
+.react-web-shell-body .logout {
+    border: 1px solid #fecaca;
+    background: #fff1f2;
+    color: #b91c1c;
+}
+
+.react-web-shell-body .title {
+    margin: 0;
+    font-size: clamp(23px, 2.9vw, 32px);
+    line-height: 1.14;
+    color: var(--text-main);
+}
+
+.react-web-shell-body .subtitle,
+.react-web-shell-body .text-muted {
+    color: var(--text-muted);
+}
+
+.react-web-shell-body .topbar {
+    border: 1px solid #d6e1e8;
+    border-radius: 14px;
+    background: #f4f7f9;
+    padding: 12px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.react-web-shell-body .mini-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.react-web-shell-body .nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.react-web-shell-body .nav a.active {
+    border-color: #bdd4ff;
+    background: #eaf2ff;
+    color: #2347a8;
+}
+
+.react-web-shell-body .panel,
+.react-web-shell-body .card,
+.react-web-shell-body .class-form-card,
+.react-web-shell-body .attendance-panel,
+.react-web-shell-body .users-filter-panel,
+.react-web-shell-body .users-hero-main,
+.react-web-shell-body .users-hero-side,
+.react-web-shell-body .dashboard-side-card,
+.react-web-shell-body .attendance-summary-card,
+.react-web-shell-body .meta-row,
+.react-web-shell-body .login-card,
+.react-web-shell-body .login-brand {
+    border: 1px solid #d6e1e8;
+    border-radius: 16px;
+    background: #f4f7f9;
+    box-shadow: none;
+}
+
+.react-web-shell-body .panel-head {
+    border-bottom: 1px solid #dce5eb;
+    background: #edf2f7;
+    color: var(--text-main);
+}
+
+.react-web-shell-body .panel-body,
+.react-web-shell-body .panel-form,
+.react-web-shell-body .attendance-panel-body {
+    background: #fff;
+    border-radius: 12px;
+}
+
+.react-web-shell-body .cards,
+.react-web-shell-body .metric-grid,
+.react-web-shell-body .users-quick-stats,
+.react-web-shell-body .attendance-summary-grid {
+    gap: 10px;
+}
+
+.react-web-shell-body .cards > .card,
+.react-web-shell-body .metric-card,
+.react-web-shell-body .users-quick-stat,
+.react-web-shell-body .attendance-quick-card {
+    border: 1px solid #d6e1e8;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: none;
+}
+
+.react-web-shell-body .table-wrap,
+.react-web-shell-body .class-table-wrap,
+.react-web-shell-body .attendance-sheet-wrap,
+.react-web-shell-body .score-matrix-wrap,
+.react-web-shell-body .attendance-report-table,
+.react-web-shell-body .users-table-wrap {
+    border-radius: 12px;
+}
+
+.react-web-shell-body table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.react-web-shell-body th,
+.react-web-shell-body td {
+    border-bottom: 1px solid #e2eaf0;
+    padding: 10px 11px;
+    color: var(--text-main);
+}
+
+.react-web-shell-body th {
+    color: #5a6d80;
+    text-transform: uppercase;
+    letter-spacing: 0.26px;
+    font-size: 12px;
+    font-weight: 800;
+    background: #f9fcff;
+}
+
+.react-web-shell-body tr:last-child td {
+    border-bottom: none;
+}
+
+.react-web-shell-body .role-pill,
+.react-web-shell-body .role-chip,
+.react-web-shell-body .hero-pill,
+.react-web-shell-body .filter-pill,
+.react-web-shell-body .status-pill,
+.react-web-shell-body .attendance-report-badge,
+.react-web-shell-body .attendance-summary-pill {
+    border: 1px solid #ccdaea;
+    background: #fff;
+    color: #4b6076;
+    border-radius: 999px;
+}
+
+.react-web-shell-body .flash-success,
+.react-web-shell-body .feedback-success {
+    border: 1px solid #bbf7d0;
+    background: #ecfdf3;
+    color: #166534;
+    border-radius: 10px;
+    padding: 10px 11px;
+}
+
+.react-web-shell-body .flash-error,
+.react-web-shell-body .feedback-error {
+    border: 1px solid #fecaca;
+    background: #fff1f2;
+    color: #991b1b;
+    border-radius: 10px;
+    padding: 10px 11px;
+}
+
+.react-web-shell-body .school-standard-strip,
+.react-web-shell-body .workflow-link.active,
+.react-web-shell-body .attendance-hero,
+.react-web-shell-body .users-hero {
+    border-color: #d6e1e8;
+    background: #f4f7f9;
+}
+
+.react-web-shell-body .workflow-step,
+.react-web-shell-body .brand-step-index,
+.react-web-shell-body .login-mark {
+    background: linear-gradient(140deg, #2f67f6, #1e4fca);
+    box-shadow: none;
+}
+
+.react-web-shell-body .top-controls {
+    position: static;
+    margin: 0 0 10px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.react-web-shell-body .page-shell {
+    max-width: 1280px;
+    padding: 0;
+    min-height: 0;
+}
+
+.react-web-shell-body .login-shell {
+    grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+    gap: 14px;
+}
+
+.react-web-shell-body .login-brand {
+    background: #f4f7f9;
+}
+
+.react-web-shell-body .login-card {
+    background: #fff;
+}
+
+.react-web-shell-body .brand-chip,
+.react-web-shell-body .brand-step,
+.react-web-shell-body .auth-method-switch,
+.react-web-shell-body .auth-method-helper,
+.react-web-shell-body .demo-accounts,
+.react-web-shell-body .meta-row,
+.react-web-shell-body .footer-links span {
+    border: 1px solid #d6e1e8;
+    background: #fff;
+}
+
+.react-web-shell-body .auth-method-option span {
+    color: #4f6277;
+}
+
+.react-web-shell-body .auth-method-option.active span,
+.react-web-shell-body .auth-method-option input:checked + span {
+    background: linear-gradient(140deg, #2f67f6, #1e4fca);
+    color: #fff;
+    box-shadow: none;
+}
+
+.react-web-shell-body .field-shell svg {
+    fill: #6f8093;
+}
+
+.react-web-shell-body .field input {
+    border-color: #cfdbe5;
+    border-radius: 11px;
+    padding: 12px 14px 12px 42px;
+    font-size: 14px;
+}
+
+.react-web-shell-body .field input.password-input {
+    padding-right: 86px;
+}
+
+.react-web-shell-body .password-toggle {
+    border: 1px solid #ccdaea;
+    background: #eaf2ff;
+    color: #2b4fae;
+}
+
+.react-web-shell-body .submit-button {
+    border-radius: 11px;
+    padding: 13px 16px;
+}
+
+.react-web-shell-body .attendance-actions a.primary {
+    border: 1px solid #2f67f6;
+    background: linear-gradient(140deg, #2f67f6, #1e4fca);
+    color: #fff;
+}
+
+html[data-theme="dark"] .react-web-shell-header,
+html[data-theme="dark"] .react-web-shell-body .app-frame,
+html[data-theme="dark"] .react-web-shell-body .global-sidebar,
+html[data-theme="dark"] .react-web-shell-body .global-head,
+html[data-theme="dark"] .react-web-shell-body .sidebar-user-card,
+html[data-theme="dark"] .react-web-shell-body .panel,
+html[data-theme="dark"] .react-web-shell-body .card,
+html[data-theme="dark"] .react-web-shell-body .login-brand,
+html[data-theme="dark"] .react-web-shell-body .login-card {
+    border-color: var(--line);
+    background: var(--surface-soft);
+}
+
+html[data-theme="dark"] .react-web-shell-body .sidebar-links a,
+html[data-theme="dark"] .react-web-shell-body .button-secondary,
+html[data-theme="dark"] .react-web-shell-body .head-link,
+html[data-theme="dark"] .react-web-shell-body .nav a,
+html[data-theme="dark"] .react-web-shell-body .mini-actions a,
+html[data-theme="dark"] .react-web-shell-body .field input,
+html[data-theme="dark"] .react-web-shell-body select,
+html[data-theme="dark"] .react-web-shell-body textarea {
+    border-color: var(--line);
+    background: var(--surface);
+    color: var(--text-main);
+}
+
+html[data-theme="dark"] .react-web-shell-body .sidebar-user-role,
+html[data-theme="dark"] .react-web-shell-body .sidebar-user-email {
+    color: var(--text-muted);
+}
+
+html[data-theme="dark"] .react-web-shell-body th {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+@media (max-width: 1180px) {
+    .react-web-shell-body .workspace-shell {
+        grid-template-columns: 1fr;
+    }
+
+    .react-web-shell-body .global-sidebar {
+        border-right: 0;
+        border-bottom: 1px solid #d6e1e8;
+    }
+}
+
+@media (max-width: 900px) {
+    .react-web-shell-body .login-shell {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 780px) {
+    .react-web-shell-header {
+        flex-direction: column;
+    }
+
+    .react-web-shell-header-right {
+        width: 100%;
+        align-items: flex-start;
+    }
+
+    .react-web-shell-actions {
+        justify-content: flex-start;
+    }
+
+    .react-web-shell-body .topbar,
+    .react-web-shell-body .global-head {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}

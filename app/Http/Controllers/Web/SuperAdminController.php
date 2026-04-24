@@ -7,6 +7,9 @@ use App\Models\SchoolClass;
 use App\Models\School;
 use App\Models\Student;
 use App\Models\User;
+use App\Support\ProfileImageStorage;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
@@ -54,6 +57,7 @@ class SuperAdminController extends Controller
                     'name' => (string) $school->name,
                     'school_code' => (string) ($school->school_code ?? ''),
                     'location' => (string) ($school->location ?? ''),
+                    'image_url' => (string) ($school->image_url ?? ''),
                     'admin_count' => (int) ($school->admin_count ?? 0),
                     'teacher_count' => (int) ($school->teacher_count ?? 0),
                     'student_count' => (int) ($school->student_count ?? 0),
@@ -63,6 +67,8 @@ class SuperAdminController extends Controller
                     'lead_admin_name' => $leadAdmin?->name,
                     'lead_admin_email' => $leadAdmin?->email,
                     'lead_admin_id' => $leadAdmin?->id,
+                    'manage_url' => route('super-admin.schools.manage', ['school' => $school->id], false),
+                    'update_image_url' => route('super-admin.schools.image.update', ['school' => $school->id], false),
                 ];
             })
             ->all();
@@ -106,18 +112,110 @@ class SuperAdminController extends Controller
             ])
             ->all();
 
-        return view('web.super_admin.dashboard', [
-            'schoolCount' => $schoolCount,
-            'adminCount' => $adminCount,
-            'teacherCount' => $teacherCount,
-            'studentCount' => $studentCount,
-            'parentCount' => $parentCount,
-            'classCount' => $classCount,
-            'schoolsReadyCount' => $schoolsReadyCount,
-            'schools' => $schools,
-            'adminDirectory' => $adminDirectory,
-            'schoolHealth' => $schoolHealth,
+        return view('web.panel', [
+            'title' => 'Super Admin Dashboard',
+            'subtitle' => 'System-wide school overview and configuration hub.',
+            'stats' => [
+                ['label' => 'Schools', 'value' => $schoolCount],
+                ['label' => 'Schools Ready', 'value' => $schoolsReadyCount],
+                ['label' => 'Admins', 'value' => $adminCount],
+                ['label' => 'Teachers', 'value' => $teacherCount],
+                ['label' => 'Students', 'value' => $studentCount],
+                ['label' => 'Parents', 'value' => $parentCount],
+                ['label' => 'Classes', 'value' => $classCount],
+            ],
+            'tableTitle' => 'School Directory',
+            'columns' => [
+                'School',
+                'Code',
+                'Location',
+                'Admins',
+                'Teachers',
+                'Students',
+                'Classes',
+                'Subjects',
+            ],
+            'rows' => array_map(static fn (array $row): array => [
+                [
+                    'label' => (string) ($row['name'] ?? '-'),
+                    'url' => (string) ($row['manage_url'] ?? '#'),
+                ],
+                (string) ($row['school_code'] ?? '-'),
+                (string) ($row['location'] ?? '-'),
+                (string) ($row['admin_count'] ?? 0),
+                (string) ($row['teacher_count'] ?? 0),
+                (string) ($row['student_count'] ?? 0),
+                (string) ($row['class_count'] ?? 0),
+                (string) ($row['subject_count'] ?? 0),
+            ], $schools),
+            'schoolCards' => $schools,
+            'schoolImageAccept' => 'image/png,image/jpeg,image/webp,.jpg,.jpeg,.png,.webp',
+            'schoolImageMaxMb' => ProfileImageStorage::maxUploadMb(),
+            'modules' => [
+                [
+                    'number' => 1,
+                    'title' => 'School Control',
+                    'description' => 'Open, create, and configure school instances.',
+                    'metric_label' => 'Schools',
+                    'metric_value' => $schoolCount,
+                    'links' => [
+                        ['label' => 'Schools', 'url' => route('super-admin.schools.index')],
+                        ['label' => 'Create School', 'url' => route('panel.schools.create')],
+                    ],
+                ],
+                [
+                    'number' => 2,
+                    'title' => 'Admin Directory',
+                    'description' => 'Manage admin users and school ownership.',
+                    'metric_label' => 'Admins',
+                    'metric_value' => count($adminDirectory),
+                    'links' => [
+                        ['label' => 'Admins', 'url' => route('panel.users.index', ['role' => 'admin'])],
+                        ['label' => 'Create Admin', 'url' => route('panel.users.create', ['role' => 'admin'])],
+                    ],
+                ],
+                [
+                    'number' => 3,
+                    'title' => 'Health & Audit',
+                    'description' => 'Monitor assignment health and system activity.',
+                    'metric_label' => 'Health Rows',
+                    'metric_value' => count($schoolHealth),
+                    'links' => [
+                        ['label' => 'Audit Logs', 'url' => route('panel.audit-logs.index')],
+                        ['label' => 'Settings', 'url' => route('super-admin.settings')],
+                    ],
+                ],
+            ],
+            'panel' => 'super-admin',
         ]);
+    }
+
+    public function updateSchoolImage(Request $request, School $school): RedirectResponse
+    {
+        $payload = $request->validate([
+            'school_image' => [
+                'required',
+                'file',
+                'mimetypes:image/jpeg,image/png,image/webp',
+                'mimes:jpg,jpeg,png,webp',
+                'max:'.ProfileImageStorage::maxUploadKb(),
+            ],
+        ]);
+
+        $imageUrl = ProfileImageStorage::storeForModel(
+            $payload['school_image'],
+            $school,
+            $request->user(),
+            'schools',
+            'school-logo',
+            ['source' => 'super-admin-dashboard']
+        );
+
+        $school->forceFill([
+            'image_url' => $imageUrl,
+        ])->save();
+
+        return back()->with('success', 'School image updated successfully.');
     }
 
     public function schools(): View
@@ -237,11 +335,87 @@ class SuperAdminController extends Controller
             ])
             ->all();
 
-        return view('web.super_admin.manage_school', [
-            'school' => $school,
-            'admins' => $admins,
-            'classes' => $classes,
-            'recentStudents' => $recentStudents,
+        $schoolCode = trim((string) ($school->school_code ?? ''));
+        $campus = trim((string) ($school->location ?? ''));
+
+        return view('web.panel', [
+            'title' => 'Manage School: '.$school->name,
+            'subtitle' => 'Code: '.($schoolCode !== '' ? $schoolCode : 'N/A').' | Campus: '.($campus !== '' ? $campus : 'Not set'),
+            'stats' => [
+                ['label' => 'Admins', 'value' => (int) ($school->admin_count ?? 0)],
+                ['label' => 'Teachers', 'value' => (int) ($school->teacher_count ?? 0)],
+                ['label' => 'Students', 'value' => (int) ($school->student_count ?? 0)],
+                ['label' => 'Parents', 'value' => (int) ($school->parent_count ?? 0)],
+                ['label' => 'Classes', 'value' => (int) ($school->classes_count ?? 0)],
+                ['label' => 'Subjects', 'value' => (int) ($school->subjects_count ?? 0)],
+                ['label' => 'Recent Students', 'value' => count($recentStudents)],
+                ['label' => 'School Admin Rows', 'value' => $admins->count()],
+            ],
+            'tableTitle' => 'Classes In This School',
+            'columns' => ['Class', 'Grade', 'Room', 'Students', 'Subjects', 'Teachers', 'Routine', 'Action'],
+            'rows' => array_map(fn (array $class): array => [
+                (string) ($class['name'] ?? '-'),
+                (string) (($class['grade_level'] ?? '') !== '' ? $class['grade_level'] : '-'),
+                (string) (($class['room'] ?? '') !== '' ? $class['room'] : '-'),
+                (string) ($class['students_count'] ?? 0),
+                (string) ($class['subjects_count'] ?? 0),
+                (string) ($class['teachers_count'] ?? 0),
+                (string) ($class['timetables_count'] ?? 0),
+                [
+                    'label' => 'Open Class',
+                    'url' => route('panel.classes.show', (int) ($class['id'] ?? 0)),
+                ],
+            ], $classes),
+            'modules' => [
+                [
+                    'number' => 1,
+                    'title' => 'School Admins',
+                    'description' => 'Open and manage administrator accounts for this school.',
+                    'metric_label' => 'Admins',
+                    'metric_value' => $admins->count(),
+                    'links' => [
+                        ['label' => 'View Admins', 'url' => route('panel.users.index', ['school_id' => $school->id, 'role' => 'admin'])],
+                        ['label' => 'Add Admin', 'url' => route('panel.users.create', ['role' => 'admin', 'school_id' => $school->id])],
+                    ],
+                ],
+                [
+                    'number' => 2,
+                    'title' => 'Teachers & Students',
+                    'description' => 'Manage school teachers, students, and guardians.',
+                    'metric_label' => 'Users',
+                    'metric_value' => (int) ($school->teacher_count ?? 0) + (int) ($school->student_count ?? 0) + (int) ($school->parent_count ?? 0),
+                    'links' => [
+                        ['label' => 'Teachers', 'url' => route('panel.users.index', ['school_id' => $school->id, 'role' => 'teacher'])],
+                        ['label' => 'Students', 'url' => route('panel.users.index', ['school_id' => $school->id, 'role' => 'student'])],
+                    ],
+                ],
+                [
+                    'number' => 3,
+                    'title' => 'Academic Setup',
+                    'description' => 'Configure classes, subjects, and timetable for this school.',
+                    'metric_label' => 'Academic Items',
+                    'metric_value' => (int) ($school->classes_count ?? 0) + (int) ($school->subjects_count ?? 0),
+                    'links' => [
+                        ['label' => 'Classes', 'url' => route('panel.classes.index', ['school_id' => $school->id])],
+                        ['label' => 'Subjects', 'url' => route('panel.subjects.index', ['school_id' => $school->id])],
+                        ['label' => 'Timetable', 'url' => route('panel.timetables.index', ['school_id' => $school->id])],
+                    ],
+                ],
+                [
+                    'number' => 4,
+                    'title' => 'School Actions',
+                    'description' => 'Continue setup and communication flow.',
+                    'metric_label' => 'Quick Actions',
+                    'metric_value' => 4,
+                    'links' => [
+                        ['label' => 'Edit School', 'url' => route('panel.schools.edit', $school->id)],
+                        ['label' => 'Create Class', 'url' => route('panel.classes.create')],
+                        ['label' => 'Create Subject', 'url' => route('panel.subjects.create')],
+                        ['label' => 'Create Announcement', 'url' => route('panel.announcements.create')],
+                    ],
+                ],
+            ],
+            'panel' => 'super-admin',
         ]);
     }
 

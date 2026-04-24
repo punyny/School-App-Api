@@ -49,9 +49,12 @@ class StudentManagementController extends Controller
 
         $authUser = $request->user();
         $schoolId = $this->resolveSchoolId($authUser, $request);
+        $classIdRule = $authUser->role === 'teacher'
+            ? ['required', 'integer', 'exists:classes,id']
+            : ['nullable', 'integer', 'exists:classes,id'];
 
         $payload = $request->validate([
-            'class_id' => ['nullable', 'integer', 'exists:classes,id'],
+            'class_id' => $classIdRule,
             'student_id' => ['nullable', 'string', 'max:100', Rule::unique('students', 'student_code')],
             'first_name' => ['nullable', 'string', 'max:100'],
             'last_name' => ['nullable', 'string', 'max:100'],
@@ -86,9 +89,26 @@ class StudentManagementController extends Controller
         }
         unset($payload['image'], $payload['remove_image']);
 
-        // Student class is assigned from Class management flow (Create/Edit Class).
-        // Ignore class_id during student creation so new students start unassigned.
-        unset($payload['class_id']);
+        $classId = isset($payload['class_id']) ? (int) $payload['class_id'] : 0;
+        if ($classId > 0) {
+            $class = SchoolClass::query()->findOrFail($classId);
+            if ((int) $class->school_id !== $schoolId) {
+                throw ValidationException::withMessages([
+                    'class_id' => ['Selected class does not belong to your school.'],
+                ]);
+            }
+
+            if ($authUser->role === 'teacher' && ! $this->teacherManagesClass($authUser, $classId)) {
+                throw ValidationException::withMessages([
+                    'class_id' => ['You can only assign students to classes you teach.'],
+                ]);
+            }
+        }
+
+        if ($authUser->role !== 'teacher') {
+            // Admin/super-admin may enroll class later from class management flows.
+            unset($payload['class_id']);
+        }
 
         $parentIds = collect($payload['parent_ids'] ?? [])->unique()->values()->all();
         if ($parentIds !== []) {
@@ -149,7 +169,7 @@ class StudentManagementController extends Controller
                 'student_code' => $payload['student_id'] ?? null,
                 'grade' => $payload['grade'] ?? null,
                 'parent_name' => $payload['parent_name'] ?? null,
-                'class_id' => null,
+                'class_id' => $payload['class_id'] ?? null,
             ]);
 
             if ($parentIds !== []) {
@@ -255,6 +275,12 @@ class StudentManagementController extends Controller
             if ((int) $class->school_id !== $schoolId) {
                 throw ValidationException::withMessages([
                     'class_id' => ['Selected class does not belong to your school.'],
+                ]);
+            }
+
+            if ($authUser->role === 'teacher' && ! $this->teacherManagesClass($authUser, $targetClassId)) {
+                throw ValidationException::withMessages([
+                    'class_id' => ['You can only assign students to classes you teach.'],
                 ]);
             }
         }
@@ -973,9 +999,19 @@ class StudentManagementController extends Controller
             return (int) ($authUser->school_id ?? 0);
         }
 
+        if ($authUser->role === 'teacher') {
+            if (! $authUser->school_id) {
+                throw ValidationException::withMessages([
+                    'school_id' => ['This teacher account has no school assigned.'],
+                ]);
+            }
+
+            return (int) $authUser->school_id;
+        }
+
         if ($authUser->role !== 'admin') {
             throw ValidationException::withMessages([
-                'role' => ['Only admin or super-admin can create students.'],
+                'role' => ['Only super-admin, admin, or teacher can create students.'],
             ]);
         }
 
@@ -994,9 +1030,32 @@ class StudentManagementController extends Controller
             return;
         }
 
+        if ($authUser->role === 'teacher') {
+            if (! $authUser->school_id) {
+                throw ValidationException::withMessages([
+                    'school_id' => ['This teacher account has no school assigned.'],
+                ]);
+            }
+
+            $studentSchoolId = (int) ($student->user?->school_id ?? 0);
+            if ($studentSchoolId !== (int) $authUser->school_id) {
+                throw ValidationException::withMessages([
+                    'student_id' => ['Student does not belong to your school.'],
+                ]);
+            }
+
+            if (! $this->teacherManagesClass($authUser, (int) $student->class_id)) {
+                throw ValidationException::withMessages([
+                    'student_id' => ['You can only manage students in classes you teach.'],
+                ]);
+            }
+
+            return;
+        }
+
         if ($authUser->role !== 'admin' || ! $authUser->school_id) {
             throw ValidationException::withMessages([
-                'role' => ['Only admin or super-admin can manage students.'],
+                'role' => ['Only super-admin, admin, or teacher can manage students.'],
             ]);
         }
 
@@ -1023,6 +1082,13 @@ class StudentManagementController extends Controller
             $schoolId = (int) ($authUser->school_id ?? 0);
         } elseif ($authUser->role === 'super-admin') {
             $schoolId = isset($filters['school_id']) ? (int) $filters['school_id'] : null;
+        } elseif ($authUser->role === 'teacher') {
+            if (! $authUser->school_id) {
+                throw ValidationException::withMessages([
+                    'school_id' => ['This teacher account has no school assigned.'],
+                ]);
+            }
+            $schoolId = (int) $authUser->school_id;
         }
 
         $query = Student::query()
@@ -1041,6 +1107,17 @@ class StudentManagementController extends Controller
             $query->where('class_id', $filters['class_id']);
         }
 
+        if ($authUser->role === 'teacher') {
+            $classIds = $authUser->teachingClasses()
+                ->pluck('classes.id')
+                ->map(fn ($id): int => (int) $id)
+                ->filter(fn (int $id): bool => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+            $query->whereIn('class_id', $classIds === [] ? [-1] : $classIds);
+        }
+
         if (isset($filters['search']) && $filters['search'] !== '') {
             $search = $filters['search'];
             $query->whereHas('user', function (Builder $userQuery) use ($search): void {
@@ -1056,6 +1133,17 @@ class StudentManagementController extends Controller
         }
 
         return $query;
+    }
+
+    private function teacherManagesClass(User $teacher, int $classId): bool
+    {
+        if ($teacher->role !== 'teacher' || $classId <= 0) {
+            return false;
+        }
+
+        return $teacher->teachingClasses()
+            ->where('classes.id', $classId)
+            ->exists();
     }
 
     private function resolvePerPage(mixed $perPageInput, Builder $query): int

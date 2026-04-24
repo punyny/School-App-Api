@@ -48,4 +48,25 @@ return [
         ],
     ],
 
+    'telegram' => [
+        'enabled' => env('TELEGRAM_ENABLED', false),
+        'bot_token' => env('TELEGRAM_BOT_TOKEN'),
+        'base_url' => env('TELEGRAM_API_BASE_URL', 'https://api.telegram.org'),
+        'parse_mode' => env('TELEGRAM_PARSE_MODE', ''),
+        'disable_web_page_preview' => env('TELEGRAM_DISABLE_WEB_PAGE_PREVIEW', true),
+        'timeout_seconds' => env('TELEGRAM_TIMEOUT_SECONDS', 10),
+        'group_chat_ids' => array_values(array_filter(
+            array_map(
+                static fn (string $id): string => trim($id),
+                explode(',', (string) env('TELEGRAM_GROUP_CHAT_IDS', ''))
+            ),
+            static fn (string $id): bool => $id !== ''
+        )),
+        'group_allow_any_approver' => env('TELEGRAM_GROUP_ALLOW_ANY_APPROVER', false),
+        'leave_action_buttons_enabled' => env('TELEGRAM_LEAVE_ACTION_BUTTONS_ENABLED', true),
+        'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET', ''),
+        'leave_action_ttl_minutes' => env('TELEGRAM_LEAVE_ACTION_TTL_MINUTES', 1440),
+        'link_code_ttl_minutes' => env('TELEGRAM_LINK_CODE_TTL_MINUTES', 15),
+    ],
+
 ];

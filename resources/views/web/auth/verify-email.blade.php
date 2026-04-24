@@ -94,6 +94,8 @@
     </style>
 </head>
 <body>
+    <div id="web-react-shell-root" data-shell="guest"></div>
+    <div id="web-legacy-content">
     <section class="panel">
         <h1>Verify your email</h1>
         <p>Your account is almost ready. Please open the verification link we sent before trying to use the dashboard.</p>
@@ -121,5 +123,7 @@
             @csrf
         </form>
     </section>
+    </div>
+    @vite('resources/js/react-web-shell.jsx')
 </body>
 </html>

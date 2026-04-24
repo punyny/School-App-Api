@@ -150,7 +150,7 @@ class ScoreApiTest extends TestCase
             ->assertJsonPath('data.rank_in_class', 2);
     }
 
-    public function test_yearly_score_ignores_month_and_semester_fields(): void
+    public function test_yearly_score_cannot_be_created_manually(): void
     {
         $this->seed();
 
@@ -174,11 +174,8 @@ class ScoreApiTest extends TestCase
             'period' => 'Annual',
         ]);
 
-        $response->assertCreated()
-            ->assertJsonPath('data.assessment_type', 'yearly')
-            ->assertJsonPath('data.month', null)
-            ->assertJsonPath('data.semester', null)
-            ->assertJsonPath('data.rank_in_class', 1);
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors('assessment_type');
     }
 
     public function test_report_card_and_dashboard_summary_use_actual_class_subject_count(): void
@@ -319,7 +316,7 @@ class ScoreApiTest extends TestCase
             ->assertJsonPath('data.grade', 'B');
     }
 
-    public function test_yearly_total_score_is_computed_from_monthly_and_semester_components(): void
+    public function test_yearly_total_score_is_auto_generated_from_monthly_and_semester_components(): void
     {
         $this->seed();
 
@@ -365,20 +362,18 @@ class ScoreApiTest extends TestCase
             'period' => 'Semester 1',
         ])->assertCreated();
 
-        $response = $this->withToken($token)->postJson('/api/scores', [
-            'student_id' => $student->id,
-            'subject_id' => (int) $assignment->subject_id,
-            'class_id' => (int) $assignment->class_id,
-            'exam_score' => 0,
-            'total_score' => 1,
-            'assessment_type' => 'yearly',
-            'academic_year' => '2025-2026',
-            'period' => 'Annual',
-        ]);
+        $yearlyRows = DB::table('scores')
+            ->where('student_id', $student->id)
+            ->where('subject_id', (int) $assignment->subject_id)
+            ->where('class_id', (int) $assignment->class_id)
+            ->where('assessment_type', 'yearly')
+            ->where('academic_year', '2025-2026')
+            ->get();
 
-        $response->assertCreated()
-            ->assertJsonPath('data.total_score', 70)
-            ->assertJsonPath('data.grade', 'C');
+        $this->assertCount(1, $yearlyRows);
+        $this->assertSame('70.00', number_format((float) $yearlyRows->first()->total_score, 2, '.', ''));
+        $this->assertSame('70.00', number_format((float) $yearlyRows->first()->exam_score, 2, '.', ''));
+        $this->assertSame('C', $yearlyRows->first()->grade);
     }
 
     public function test_score_cannot_exceed_subject_full_score(): void

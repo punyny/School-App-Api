@@ -83,8 +83,9 @@ class StudentCrudController extends Controller
         $messageParts = ['Student created successfully.'];
         $student = is_array($result['data']['data'] ?? null) ? $result['data']['data'] : [];
         $studentId = (int) ($student['id'] ?? 0);
+        $storedClassId = (int) ($student['class_id'] ?? 0);
 
-        if ($studentId > 0 && $requestedClassId > 0) {
+        if ($studentId > 0 && $requestedClassId > 0 && $storedClassId !== $requestedClassId) {
             $classUpdateResult = $api->put($request, '/api/students/'.$studentId, [
                 'class_id' => $requestedClassId,
             ]);

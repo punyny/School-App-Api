@@ -32,7 +32,7 @@ class LeaveRequestStoreRequest extends FormRequest
             'start_time' => ['nullable', 'date_format:H:i', 'required_if:request_type,hourly'],
             'end_time' => ['nullable', 'date_format:H:i', 'required_if:request_type,hourly'],
             'return_date' => ['nullable', 'date', 'after_or_equal:end_date', 'required_if:request_type,multi_day'],
-            'total_days' => ['nullable', 'integer', 'min:1', 'required_if:request_type,multi_day'],
+            'total_days' => ['nullable', 'integer', 'min:1'],
             'reason' => ['required', 'string'],
         ];
     }

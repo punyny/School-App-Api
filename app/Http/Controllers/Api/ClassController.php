@@ -327,6 +327,26 @@ class ClassController extends Controller
 
             if ($user->role === 'teacher') {
                 $classIds = $user->teachingClasses()->pluck('classes.id')->all();
+                $timetableClassIds = DB::table('timetables')
+                    ->where('teacher_id', $user->id)
+                    ->pluck('class_id')
+                    ->all();
+                $substituteClassIds = DB::table('substitute_teacher_assignments')
+                    ->where(function ($scope) use ($user): void {
+                        $scope
+                            ->where('substitute_teacher_id', (int) $user->id)
+                            ->orWhere('original_teacher_id', (int) $user->id);
+                    })
+                    ->pluck('class_id')
+                    ->all();
+                $classIds = collect($classIds)
+                    ->merge($timetableClassIds)
+                    ->merge($substituteClassIds)
+                    ->map(fn ($id): int => (int) $id)
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
                 $query->whereIn('id', $classIds === [] ? [-1] : $classIds);
             }
 

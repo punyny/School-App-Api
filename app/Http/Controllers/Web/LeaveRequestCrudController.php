@@ -73,7 +73,6 @@ class LeaveRequestCrudController extends Controller
             'start_time' => ['nullable', 'date_format:H:i'],
             'end_time' => ['nullable', 'date_format:H:i'],
             'return_date' => ['nullable', 'date'],
-            'total_days' => ['nullable', 'integer', 'min:1'],
             'reason' => ['required', 'string'],
         ]);
 
@@ -115,7 +114,6 @@ class LeaveRequestCrudController extends Controller
             'start_time' => ['nullable', 'date_format:H:i'],
             'end_time' => ['nullable', 'date_format:H:i'],
             'return_date' => ['nullable', 'date'],
-            'total_days' => ['nullable', 'integer', 'min:1'],
             'reason' => ['nullable', 'string'],
             'status' => ['nullable', 'in:pending,approved,rejected'],
         ]);
@@ -146,6 +144,26 @@ class LeaveRequestCrudController extends Controller
         }
 
         return redirect()->away(route('panel.leave-requests.index', [], false))->with('success', 'Leave request updated successfully.');
+    }
+
+    public function updateStatus(Request $request, int $leaveRequest, InternalApiClient $api): RedirectResponse
+    {
+        $payload = $request->validate([
+            'status' => ['required', 'in:approved,rejected'],
+        ]);
+
+        $result = $api->patch($request, '/api/leave-requests/'.$leaveRequest.'/status', [
+            'status' => $payload['status'],
+        ]);
+
+        if (($result['status'] ?? 0) !== 200) {
+            return back()->withInput()->withErrors($this->extractErrors($result));
+        }
+
+        $action = $payload['status'] === 'approved' ? 'approved' : 'rejected';
+
+        return redirect()->away(route('panel.leave-requests.index', [], false))
+            ->with('success', 'Leave request '.$action.' successfully.');
     }
 
     public function destroy(Request $request, int $leaveRequest, InternalApiClient $api): RedirectResponse

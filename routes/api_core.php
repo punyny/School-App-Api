@@ -27,11 +27,14 @@ use App\Http\Controllers\Api\ScoreController;
 use App\Http\Controllers\Api\SectionController;
 use App\Http\Controllers\Api\StudentManagementController;
 use App\Http\Controllers\Api\StudentFeeController;
+use App\Http\Controllers\Api\SubstituteTeacherAssignmentController;
 use App\Http\Controllers\Api\SubjectController;
 use App\Http\Controllers\Api\TeacherAssignmentController;
 use App\Http\Controllers\Api\TeacherProfileController;
 use App\Http\Controllers\Api\TermController;
 use App\Http\Controllers\Api\TimetableController;
+use App\Http\Controllers\Api\TelegramLinkController;
+use App\Http\Controllers\Api\TelegramWebhookController;
 use App\Http\Controllers\Api\UserManagementController;
 use Illuminate\Support\Facades\Route;
 
@@ -42,6 +45,9 @@ Route::get('/docs/openapi.yaml', function () {
         ['Content-Type' => 'application/yaml; charset=UTF-8']
     );
 });
+
+Route::post('/integrations/telegram/webhook', [TelegramWebhookController::class, 'handle'])
+    ->middleware('throttle:120,1');
 
 Route::prefix('auth')->group(function (): void {
     Route::post('/login', [AuthController::class, 'login']);
@@ -100,6 +106,8 @@ Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin', 'admin.
 
 Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin,teacher,student,parent', 'admin.ip'])->group(function (): void {
     Route::get('/dashboard/summary', [DashboardSummaryController::class, 'summary']);
+    Route::post('/integrations/telegram/link-code', [TelegramLinkController::class, 'issueLinkCode'])
+        ->middleware('throttle:6,1');
 
     Route::get('/classes', [ClassController::class, 'index']);
     Route::get('/classes/{schoolClass}', [ClassController::class, 'show']);
@@ -228,6 +236,9 @@ Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin', 'admin.
     Route::put('/payments/{payment}', [PaymentController::class, 'update']);
     Route::patch('/payments/{payment}', [PaymentController::class, 'update']);
     Route::delete('/payments/{payment}', [PaymentController::class, 'destroy']);
+
+    Route::post('/substitute-assignments', [SubstituteTeacherAssignmentController::class, 'store']);
+    Route::delete('/substitute-assignments/{substituteAssignment}', [SubstituteTeacherAssignmentController::class, 'destroy']);
 });
 
 Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin,teacher,student', 'admin.ip'])->group(function (): void {
@@ -239,6 +250,9 @@ Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin,teacher,s
         ->middleware('can:update,timetable');
     Route::delete('/timetables/{timetable}', [TimetableController::class, 'destroy'])
         ->middleware('can:delete,timetable');
+});
+
+Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin', 'admin.ip'])->group(function (): void {
     Route::get('/media', [MediaController::class, 'index']);
     Route::delete('/media/{media}', [MediaController::class, 'destroy']);
 });
@@ -246,6 +260,7 @@ Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin,teacher,s
 Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin,teacher', 'admin.ip'])->group(function (): void {
     Route::get('/attendance/tracking-context', [AttendanceController::class, 'trackingContext'])
         ->middleware('can:create,'.\App\Models\Attendance::class);
+    Route::get('/substitute-assignments', [SubstituteTeacherAssignmentController::class, 'index']);
 });
 
 Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin,teacher,student,parent', 'admin.ip'])->group(function (): void {
@@ -344,8 +359,10 @@ Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin,teacher',
         ->middleware('can:delete,announcement');
 
     Route::post('/notifications', [NotificationController::class, 'store'])
+        ->middleware('role:super-admin,admin')
         ->middleware('can:create,'.\App\Models\Notification::class);
-    Route::post('/notifications/broadcast', [NotificationController::class, 'broadcast']);
+    Route::post('/notifications/broadcast', [NotificationController::class, 'broadcast'])
+        ->middleware('role:super-admin,admin');
     Route::put('/notifications/{notification}', [NotificationController::class, 'update'])
         ->middleware('can:update,notification');
     Route::patch('/notifications/{notification}', [NotificationController::class, 'update'])
@@ -389,6 +406,11 @@ Route::middleware(['auth:sanctum', 'verified', 'role:student,parent'])->group(fu
         ->middleware('can:updateStatus,homework');
     Route::patch('/incident-reports/{incidentReport}/acknowledgment', [IncidentReportController::class, 'updateAcknowledgment'])
         ->middleware('can:updateAcknowledgment,incidentReport');
+});
+
+Route::middleware(['auth:sanctum', 'verified', 'role:student'])->group(function (): void {
+    Route::post('/homeworks/{homework}/submissions', [HomeworkController::class, 'submit'])
+        ->middleware('can:submit,homework');
 });
 
 Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin,teacher,student,parent', 'admin.ip'])->group(function (): void {

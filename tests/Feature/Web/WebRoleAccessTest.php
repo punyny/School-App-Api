@@ -426,6 +426,62 @@ class WebRoleAccessTest extends TestCase
             ->assertSee('Reject');
     }
 
+    public function test_teacher_can_approve_student_leave_request_from_web(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $student = User::query()->where('email', 'student@example.com')->firstOrFail();
+        $leaveRequestId = (int) DB::table('leaverequest')
+            ->where('submitted_by', $student->id)
+            ->where('status', 'pending')
+            ->value('id');
+
+        $this->assertGreaterThan(0, $leaveRequestId);
+        $this->actingAs($teacher);
+
+        $response = $this->patch('/panel/leave-requests/'.$leaveRequestId.'/status', [
+            'status' => 'approved',
+        ]);
+
+        $response->assertRedirect('/panel/leave-requests');
+        $response->assertSessionHas('success');
+
+        $this->assertDatabaseHas('leaverequest', [
+            'id' => $leaveRequestId,
+            'status' => 'approved',
+            'approved_by' => $teacher->id,
+        ]);
+    }
+
+    public function test_admin_can_reject_student_leave_request_from_web(): void
+    {
+        $this->seed();
+
+        $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $student = User::query()->where('email', 'student@example.com')->firstOrFail();
+        $leaveRequestId = (int) DB::table('leaverequest')
+            ->where('submitted_by', $student->id)
+            ->where('status', 'pending')
+            ->value('id');
+
+        $this->assertGreaterThan(0, $leaveRequestId);
+        $this->actingAs($admin);
+
+        $response = $this->patch('/panel/leave-requests/'.$leaveRequestId.'/status', [
+            'status' => 'rejected',
+        ]);
+
+        $response->assertRedirect('/panel/leave-requests');
+        $response->assertSessionHas('success');
+
+        $this->assertDatabaseHas('leaverequest', [
+            'id' => $leaveRequestId,
+            'status' => 'rejected',
+            'approved_by' => $admin->id,
+        ]);
+    }
+
     public function test_teacher_dashboard_hides_modules_one_to_seven_block(): void
     {
         $this->seed();
@@ -571,6 +627,34 @@ class WebRoleAccessTest extends TestCase
 
         $teacher->refresh();
         $this->assertTrue(Hash::check('password123', (string) $teacher->password));
+    }
+
+    public function test_user_can_generate_telegram_link_code_from_profile_web_endpoint(): void
+    {
+        $this->seed();
+
+        config([
+            'services.telegram.enabled' => true,
+            'services.telegram.bot_token' => 'test-bot-token',
+        ]);
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $this->actingAs($teacher);
+
+        $response = $this->postJson('/profile/telegram/link-code');
+
+        $response->assertCreated()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.expires_in_minutes', 15);
+
+        $code = (string) $response->json('data.code');
+        $this->assertMatchesRegularExpression('/^[A-Z0-9]{8}$/', $code);
+        $this->assertSame('/link '.$code, (string) $response->json('data.command'));
+
+        $this->assertDatabaseHas('telegram_link_tokens', [
+            'user_id' => $teacher->id,
+            'consumed_at' => null,
+        ]);
     }
 
     public function test_teacher_profile_page_shows_class_timetable_and_students_sections(): void
@@ -1032,7 +1116,7 @@ class WebRoleAccessTest extends TestCase
             ->assertSee('រក្សាទុកពិន្ទុទាំងអស់');
     }
 
-    public function test_admin_cannot_open_homework_crud_page_but_can_open_score_page(): void
+    public function test_admin_can_open_homework_crud_page_and_score_page(): void
     {
         $this->seed();
 
@@ -1042,8 +1126,20 @@ class WebRoleAccessTest extends TestCase
         $homeworkPage = $this->get('/panel/homeworks');
         $scorePage = $this->get('/panel/scores');
 
-        $homeworkPage->assertForbidden();
+        $homeworkPage->assertOk()->assertSee('Homework Management');
         $scorePage->assertOk()->assertSee('Score Management');
+    }
+
+    public function test_student_can_open_homework_list_page(): void
+    {
+        $this->seed();
+
+        $student = User::query()->where('email', 'student@example.com')->firstOrFail();
+        $this->actingAs($student);
+
+        $response = $this->get('/panel/homeworks');
+
+        $response->assertOk()->assertSee('Homework Management');
     }
 
     public function test_super_admin_can_open_school_and_user_crud_pages(): void
@@ -1219,5 +1315,28 @@ class WebRoleAccessTest extends TestCase
 
         $response->assertRedirect('/panel/notifications');
         $response->assertSessionHas('success');
+    }
+
+    public function test_teacher_can_view_notifications_but_cannot_manage_them(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $classId = DB::table('classes')->where('school_id', $teacher->school_id)->value('id');
+        $this->actingAs($teacher);
+
+        $index = $this->get('/panel/notifications');
+        $index->assertOk()->assertSee('Notification Management');
+
+        $createPage = $this->get('/panel/notifications/create');
+        $createPage->assertForbidden();
+
+        $broadcast = $this->post('/panel/notifications/broadcast', [
+            'audience' => 'class',
+            'class_id' => $classId,
+            'title' => 'Should Fail',
+            'content' => 'Teacher cannot broadcast from web.',
+        ]);
+        $broadcast->assertForbidden();
     }
 }

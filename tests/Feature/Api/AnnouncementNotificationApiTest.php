@@ -105,6 +105,22 @@ class AnnouncementNotificationApiTest extends TestCase
             ->assertJsonPath('data.read_status', true);
     }
 
+    public function test_teacher_cannot_create_notifications(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $student = User::query()->where('email', 'student@example.com')->firstOrFail();
+
+        Sanctum::actingAs($teacher);
+
+        $this->postJson('/api/notifications', [
+            'user_id' => $student->id,
+            'title' => 'Student notification',
+            'content' => 'Should be blocked for teacher role.',
+        ])->assertForbidden();
+    }
+
     public function test_admin_can_delete_school_announcement(): void
     {
         $this->seed();

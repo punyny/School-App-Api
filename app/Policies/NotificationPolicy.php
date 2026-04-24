@@ -29,7 +29,7 @@ class NotificationPolicy
 
     public function create(User $user): bool
     {
-        return in_array($user->role, ['super-admin', 'admin', 'teacher'], true);
+        return in_array($user->role, ['super-admin', 'admin'], true);
     }
 
     public function update(User $user, Notification $notification): bool
@@ -50,7 +50,7 @@ class NotificationPolicy
 
     public function delete(User $user, Notification $notification): bool
     {
-        if ((int) $notification->user_id === (int) $user->id) {
+        if ((int) $notification->user_id === (int) $user->id && $user->role !== 'teacher') {
             return true;
         }
 

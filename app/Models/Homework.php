@@ -44,6 +44,11 @@ class Homework extends Model
         return $this->hasMany(HomeworkStatus::class, 'homework_id');
     }
 
+    public function submissions(): HasMany
+    {
+        return $this->hasMany(HomeworkSubmission::class, 'homework_id');
+    }
+
     public function media(): MorphMany
     {
         return $this->morphMany(Media::class, 'mediable');
