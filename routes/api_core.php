@@ -332,7 +332,6 @@ Route::middleware(['auth:sanctum', 'verified', 'role:super-admin,admin,teacher',
         ->middleware('role:teacher')
         ->middleware('can:delete,homework');
     Route::post('/homeworks/{homework}/submissions/{submission}/grade', [HomeworkController::class, 'gradeSubmission'])
-        ->middleware('role:teacher')
         ->middleware('can:update,homework');
 
     Route::post('/scores', [ScoreController::class, 'store'])

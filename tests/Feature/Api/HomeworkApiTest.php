@@ -275,6 +275,70 @@ class HomeworkApiTest extends TestCase
         $this->assertEqualsWithDelta(20.0, (float) $autoScore->total_score, 0.01);
     }
 
+    public function test_admin_can_grade_submission_and_create_homework_auto_score(): void
+    {
+        $this->seed();
+
+        $admin = User::query()->where('email', 'admin@example.com')->firstOrFail();
+        $adminToken = $admin->createToken('phpunit')->plainTextToken;
+
+        $class = SchoolClass::query()->where('school_id', $admin->school_id)->firstOrFail();
+        $subject = Subject::query()->where('school_id', $admin->school_id)->firstOrFail();
+        $student = Student::query()->where('class_id', $class->id)->firstOrFail();
+
+        $homework = Homework::query()->create([
+            'class_id' => $class->id,
+            'subject_id' => $subject->id,
+            'title' => 'Admin Grade Homework',
+            'question' => 'Admin can grade this submission.',
+            'due_date' => '2026-04-30',
+            'file_attachments' => [],
+        ]);
+
+        $submission = HomeworkSubmission::query()->create([
+            'homework_id' => $homework->id,
+            'student_id' => $student->id,
+            'answer_text' => 'Submission for admin grading',
+            'submitted_at' => now(),
+        ]);
+
+        $response = $this->withToken($adminToken)->postJson(
+            "/api/homeworks/{$homework->id}/submissions/{$submission->id}/grade",
+            [
+                'teacher_score' => 14,
+                'teacher_score_max' => 20,
+                'score_weight_percent' => 50,
+                'assessment_type' => 'monthly',
+                'month' => 2,
+                'academic_year' => '2026',
+                'teacher_feedback' => 'Graded by admin.',
+            ]
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('data.submission.id', $submission->id)
+            ->assertJsonPath('data.auto_score.period', 'homework-auto');
+
+        $this->assertDatabaseHas('homework_submissions', [
+            'id' => $submission->id,
+            'graded_by_user_id' => $admin->id,
+            'score_assessment_type' => 'monthly',
+            'score_month' => 2,
+            'score_academic_year' => '2026',
+        ]);
+
+        $this->assertDatabaseHas('scores', [
+            'student_id' => $student->id,
+            'class_id' => $class->id,
+            'subject_id' => $subject->id,
+            'assessment_type' => 'monthly',
+            'month' => 2,
+            'semester' => null,
+            'academic_year' => '2026',
+            'period' => 'homework-auto',
+        ]);
+    }
+
     public function test_regrading_submission_moves_homework_auto_score_to_new_bucket(): void
     {
         $this->seed();

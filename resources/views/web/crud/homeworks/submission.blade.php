@@ -4,8 +4,8 @@
     @php
         $role = (string) ($userRole ?? '');
         $isStudent = $role === 'student';
-        $isTeacher = $role === 'teacher';
         $isTeacherOrAdmin = in_array($role, ['super-admin', 'admin', 'teacher'], true);
+        $canGradeSubmissions = $isTeacherOrAdmin;
         $homeworkId = (int) ($item['id'] ?? 0);
         $mySubmission = collect($item['submissions'] ?? [])
             ->first(fn ($submission) => (int) ($submission['student_id'] ?? 0) === (int) ($authStudentId ?? 0));
@@ -108,7 +108,7 @@
                         <th>Answer</th>
                         <th>Files</th>
                         <th>Current Grade</th>
-                        @if($isTeacher)
+                        @if($canGradeSubmissions)
                             <th>Teacher Grading</th>
                         @endif
                     </tr>
@@ -172,7 +172,7 @@
                                 <span>-</span>
                             @endif
                         </td>
-                        @if($isTeacher)
+                        @if($canGradeSubmissions)
                             <td>
                                 <form method="POST" action="{{ route('panel.homeworks.grade', ['homework' => $homeworkId, 'submission' => $submissionId]) }}" class="panel panel-form" style="padding: 12px; min-width: 310px;">
                                     @csrf
@@ -217,7 +217,7 @@
                         @endif
                     </tr>
                 @empty
-                    <tr><td colspan="{{ $isTeacher ? 6 : 5 }}">No submission yet.</td></tr>
+                    <tr><td colspan="{{ $canGradeSubmissions ? 6 : 5 }}">No submission yet.</td></tr>
                 @endforelse
                 </tbody>
             </table>
