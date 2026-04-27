@@ -119,6 +119,9 @@
                 </div>
             </div>
             <button type="submit" class="btn-space-top">Check Homework</button>
+            @if($studentSelectOptions->isEmpty())
+                <p class="text-muted">No students found in this class yet.</p>
+            @endif
             @if($selectedStudentId > 0)
                 <a href="{{ route('panel.homeworks.submission', ['homework' => $homeworkId]) }}">Reset Student Filter</a>
             @endif

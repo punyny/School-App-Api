@@ -111,6 +111,7 @@ class HomeworkCrudController extends Controller
         }
 
         $item = $result['data']['data'] ?? [];
+        $userRole = (string) $request->user()->normalizedRole();
         $selectedStudentId = (int) ($filters['student_id'] ?? 0);
 
         $studentOptions = collect($item['statuses'] ?? [])
@@ -137,8 +138,39 @@ class HomeworkCrudController extends Controller
             ->filter(fn (array $option): bool => (int) ($option['id'] ?? 0) > 0)
             ->unique('id')
             ->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)
-            ->values()
-            ->all();
+            ->values();
+
+        $classId = (int) ($item['class_id'] ?? 0);
+        $canUseClassRoster = in_array($userRole, ['super-admin', 'admin', 'teacher'], true) && $classId > 0;
+        if ($canUseClassRoster) {
+            $classResult = $api->get($request, '/api/classes/'.$classId);
+            if ($classResult['status'] === 200) {
+                $classStudents = collect($classResult['data']['data']['students'] ?? [])
+                    ->map(function ($student): array {
+                        $studentId = (int) ($student['id'] ?? 0);
+                        $name = trim((string) ($student['user']['name'] ?? ''));
+
+                        return [
+                            'id' => $studentId,
+                            'label' => $name !== '' ? $name : ('Student #'.$studentId),
+                        ];
+                    })
+                    ->filter(fn (array $option): bool => (int) ($option['id'] ?? 0) > 0);
+
+                $studentOptions = $studentOptions
+                    ->merge($classStudents)
+                    ->unique('id')
+                    ->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)
+                    ->values();
+            }
+        }
+
+        if ($selectedStudentId > 0 && ! $studentOptions->contains(fn (array $option): bool => (int) ($option['id'] ?? 0) === $selectedStudentId)) {
+            $studentOptions->push([
+                'id' => $selectedStudentId,
+                'label' => 'Student #'.$selectedStudentId,
+            ]);
+        }
 
         if ($selectedStudentId > 0) {
             $item['submissions'] = collect($item['submissions'] ?? [])
@@ -152,7 +184,7 @@ class HomeworkCrudController extends Controller
             'userRole' => $request->user()->normalizedRole(),
             'authStudentId' => (int) ($request->user()->studentProfile?->id ?? 0),
             'selectedStudentId' => $selectedStudentId,
-            'studentOptions' => $studentOptions,
+            'studentOptions' => $studentOptions->all(),
         ]);
     }
 
