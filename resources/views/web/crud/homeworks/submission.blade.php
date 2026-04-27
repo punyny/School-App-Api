@@ -7,6 +7,8 @@
         $isTeacherOrAdmin = in_array($role, ['super-admin', 'admin', 'teacher'], true);
         $canGradeSubmissions = $isTeacherOrAdmin;
         $homeworkId = (int) ($item['id'] ?? 0);
+        $selectedStudentId = (int) ($selectedStudentId ?? 0);
+        $studentSelectOptions = collect($studentOptions ?? [])->values();
         $mySubmission = collect($item['submissions'] ?? [])
             ->first(fn ($submission) => (int) ($submission['student_id'] ?? 0) === (int) ($authStudentId ?? 0));
         $homeworkMedia = collect($item['media'] ?? [])->filter(fn ($media) => ($media['category'] ?? '') === 'attachment')->values();
@@ -98,6 +100,30 @@
     @endif
 
     @if($isTeacherOrAdmin)
+        <form method="GET" action="{{ route('panel.homeworks.submission', ['homework' => $homeworkId]) }}" class="panel panel-form panel-spaced">
+            <div class="panel-head">Select Student</div>
+            <div class="form-grid">
+                <div>
+                    <label>Student</label>
+                    <select name="student_id">
+                        <option value="">All students</option>
+                        @foreach($studentSelectOptions as $studentOption)
+                            @php
+                                $optionId = (int) ($studentOption['id'] ?? 0);
+                            @endphp
+                            <option value="{{ $optionId }}" {{ $selectedStudentId === $optionId ? 'selected' : '' }}>
+                                {{ $studentOption['label'] ?? ('Student #'.$optionId) }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn-space-top">Check Homework</button>
+            @if($selectedStudentId > 0)
+                <a href="{{ route('panel.homeworks.submission', ['homework' => $homeworkId]) }}">Reset Student Filter</a>
+            @endif
+        </form>
+
         <section class="panel panel-spaced">
             <div class="panel-head">Student Submissions</div>
             <table>
@@ -108,6 +134,7 @@
                         <th>Answer</th>
                         <th>Files</th>
                         <th>Current Grade</th>
+                        <th>Check</th>
                         @if($canGradeSubmissions)
                             <th>Teacher Grading</th>
                         @endif
@@ -135,6 +162,7 @@
                         $currentTeacherScoreMax = old('teacher_score_max', $submission['teacher_score_max'] ?? 100);
                         $currentWeightPercent = old('score_weight_percent', $submission['score_weight_percent'] ?? 100);
                         $currentFeedback = old('teacher_feedback', $submission['teacher_feedback'] ?? '');
+                        $isChecked = ! empty($submission['graded_at']);
                     @endphp
                     <tr>
                         <td>{{ $submission['student']['user']['name'] ?? ($submission['student_id'] ?? '-') }}</td>
@@ -172,10 +200,12 @@
                                 <span>-</span>
                             @endif
                         </td>
+                        <td>{{ $isChecked ? 'Checked' : 'Not Checked' }}</td>
                         @if($canGradeSubmissions)
                             <td>
                                 <form method="POST" action="{{ route('panel.homeworks.grade', ['homework' => $homeworkId, 'submission' => $submissionId]) }}" class="panel panel-form" style="padding: 12px; min-width: 310px;">
                                     @csrf
+                                    <input type="hidden" name="selected_student_id" value="{{ $selectedStudentId }}">
                                     <div class="form-grid">
                                         <div>
                                             <label>Score</label>
@@ -211,13 +241,13 @@
                                     </div>
                                     <label>Feedback</label>
                                     <textarea name="teacher_feedback" rows="2">{{ $currentFeedback }}</textarea>
-                                    <button type="submit" class="btn-space-top">Save Grade</button>
+                                    <button type="submit" class="btn-space-top">Check & Save Score</button>
                                 </form>
                             </td>
                         @endif
                     </tr>
                 @empty
-                    <tr><td colspan="{{ $canGradeSubmissions ? 6 : 5 }}">No submission yet.</td></tr>
+                    <tr><td colspan="{{ $canGradeSubmissions ? 7 : 6 }}">No submission yet.</td></tr>
                 @endforelse
                 </tbody>
             </table>

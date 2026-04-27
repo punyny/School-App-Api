@@ -100,16 +100,59 @@ class HomeworkCrudController extends Controller
 
     public function submission(Request $request, int $homework, InternalApiClient $api): View|RedirectResponse
     {
+        $filters = $request->validate([
+            'student_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+
         $result = $api->get($request, '/api/homeworks/'.$homework);
 
         if ($result['status'] !== 200) {
             return redirect()->away(route('panel.homeworks.index', [], false))->withErrors($this->extractErrors($result));
         }
 
+        $item = $result['data']['data'] ?? [];
+        $selectedStudentId = (int) ($filters['student_id'] ?? 0);
+
+        $studentOptions = collect($item['statuses'] ?? [])
+            ->map(function ($status): array {
+                $studentId = (int) ($status['student_id'] ?? 0);
+                $name = trim((string) ($status['student']['user']['name'] ?? ''));
+
+                return [
+                    'id' => $studentId,
+                    'label' => $name !== '' ? $name : ('Student #'.$studentId),
+                ];
+            })
+            ->merge(
+                collect($item['submissions'] ?? [])->map(function ($submission): array {
+                    $studentId = (int) ($submission['student_id'] ?? 0);
+                    $name = trim((string) ($submission['student']['user']['name'] ?? ''));
+
+                    return [
+                        'id' => $studentId,
+                        'label' => $name !== '' ? $name : ('Student #'.$studentId),
+                    ];
+                })
+            )
+            ->filter(fn (array $option): bool => (int) ($option['id'] ?? 0) > 0)
+            ->unique('id')
+            ->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values()
+            ->all();
+
+        if ($selectedStudentId > 0) {
+            $item['submissions'] = collect($item['submissions'] ?? [])
+                ->filter(fn ($submission): bool => (int) ($submission['student_id'] ?? 0) === $selectedStudentId)
+                ->values()
+                ->all();
+        }
+
         return view('web.crud.homeworks.submission', [
-            'item' => $result['data']['data'] ?? null,
+            'item' => $item,
             'userRole' => $request->user()->normalizedRole(),
             'authStudentId' => (int) ($request->user()->studentProfile?->id ?? 0),
+            'selectedStudentId' => $selectedStudentId,
+            'studentOptions' => $studentOptions,
         ]);
     }
 
@@ -130,6 +173,7 @@ class HomeworkCrudController extends Controller
     public function gradeSubmission(Request $request, int $homework, int $submission, InternalApiClient $api): RedirectResponse
     {
         $payload = $this->validateGradePayload($request);
+        $selectedStudentId = (int) $request->input('selected_student_id', 0);
         $result = $api->post(
             $request,
             "/api/homeworks/{$homework}/submissions/{$submission}/grade",
@@ -140,8 +184,13 @@ class HomeworkCrudController extends Controller
             return back()->withInput()->withErrors($this->extractErrors($result));
         }
 
+        $routeParams = ['homework' => $homework];
+        if ($selectedStudentId > 0) {
+            $routeParams['student_id'] = $selectedStudentId;
+        }
+
         return redirect()
-            ->away(route('panel.homeworks.submission', ['homework' => $homework], false))
+            ->away(route('panel.homeworks.submission', $routeParams, false))
             ->with('success', 'បានដាក់ពិន្ទុកិច្ចការសិស្សរួចរាល់។');
     }
 
