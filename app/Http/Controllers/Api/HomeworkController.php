@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\HomeworkSubmissionGradeRequest;
 use App\Http\Requests\Api\HomeworkSubmissionStoreRequest;
 use App\Http\Requests\Api\HomeworkStatusUpdateRequest;
 use App\Http\Requests\Api\HomeworkStoreRequest;
@@ -14,6 +15,7 @@ use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\Subject;
 use App\Models\User;
+use App\Services\HomeworkAutoScoreService;
 use App\Support\ProfileImageStorage;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
@@ -48,7 +50,7 @@ class HomeworkController extends Controller
             $query->with([
                 'submissions' => fn ($submissionQuery) => $submissionQuery
                     ->where('student_id', $studentId > 0 ? $studentId : -1)
-                    ->with('media')
+                    ->with(['media', 'gradedBy'])
                     ->latest('submitted_at'),
             ]);
         }
@@ -272,6 +274,61 @@ class HomeworkController extends Controller
         ]);
     }
 
+    public function gradeSubmission(
+        HomeworkSubmissionGradeRequest $request,
+        Homework $homework,
+        HomeworkSubmission $submission,
+        HomeworkAutoScoreService $autoScoreService
+    ): JsonResponse {
+        $this->authorize('update', $homework);
+
+        if ((int) $submission->homework_id !== (int) $homework->id) {
+            return response()->json([
+                'message' => 'Submission does not belong to this homework.',
+            ], 404);
+        }
+
+        if (! $this->canManageHomeworkTarget($request->user(), (int) $homework->class_id, (int) $homework->subject_id)) {
+            return response()->json([
+                'message' => 'You do not have permission to grade this submission.',
+            ], 403);
+        }
+
+        $payload = $request->validated();
+        $assessmentType = (string) ($payload['assessment_type'] ?? 'monthly');
+        $month = $assessmentType === 'monthly'
+            ? (int) ($payload['month'] ?? 0)
+            : null;
+        $semester = $assessmentType === 'semester'
+            ? (int) ($payload['semester'] ?? 0)
+            : null;
+
+        $oldContext = $autoScoreService->contextFromSubmission($submission);
+
+        $submission->forceFill([
+            'teacher_score' => (float) $payload['teacher_score'],
+            'teacher_score_max' => (float) $payload['teacher_score_max'],
+            'score_weight_percent' => (float) $payload['score_weight_percent'],
+            'score_assessment_type' => $assessmentType,
+            'score_month' => $assessmentType === 'monthly' ? $month : null,
+            'score_semester' => $assessmentType === 'semester' ? $semester : null,
+            'score_academic_year' => $this->normalizeAcademicYear($payload['academic_year'] ?? null),
+            'teacher_feedback' => $this->normalizeOptionalText($payload['teacher_feedback'] ?? null),
+            'graded_by_user_id' => (int) $request->user()->id,
+            'graded_at' => now(),
+        ])->save();
+
+        $autoScore = $autoScoreService->syncFromSubmission($submission->fresh(['homework']), $oldContext);
+
+        return response()->json([
+            'message' => 'បានដាក់ពិន្ទុកិច្ចការជោគជ័យ។',
+            'data' => [
+                'submission' => $submission->fresh()->load(['student.user', 'homework', 'media', 'gradedBy']),
+                'auto_score' => $autoScore?->load(['student.user', 'class', 'subject']),
+            ],
+        ]);
+    }
+
     public function exportPdf(Request $request)
     {
         $this->authorize('export', Homework::class);
@@ -376,7 +433,7 @@ class HomeworkController extends Controller
             $homework->load([
                 'submissions' => fn ($query) => $query
                     ->where('student_id', $studentId > 0 ? $studentId : -1)
-                    ->with(['student.user', 'media'])
+                    ->with(['student.user', 'media', 'gradedBy'])
                     ->latest('submitted_at'),
             ]);
 
@@ -388,7 +445,7 @@ class HomeworkController extends Controller
             $homework->load([
                 'submissions' => fn ($query) => $query
                     ->whereIn('student_id', $studentIds === [] ? [-1] : $studentIds)
-                    ->with(['student.user', 'media'])
+                    ->with(['student.user', 'media', 'gradedBy'])
                     ->latest('submitted_at'),
             ]);
 
@@ -397,7 +454,7 @@ class HomeworkController extends Controller
 
         $homework->load([
             'submissions' => fn ($query) => $query
-                ->with(['student.user', 'media'])
+                ->with(['student.user', 'media', 'gradedBy'])
                 ->latest('submitted_at'),
         ]);
     }
@@ -539,5 +596,19 @@ class HomeworkController extends Controller
         }
 
         return null;
+    }
+
+    private function normalizeAcademicYear(mixed $value): ?string
+    {
+        $text = trim((string) ($value ?? ''));
+
+        return $text !== '' ? $text : null;
+    }
+
+    private function normalizeOptionalText(mixed $value): ?string
+    {
+        $text = trim((string) ($value ?? ''));
+
+        return $text !== '' ? $text : null;
     }
 }

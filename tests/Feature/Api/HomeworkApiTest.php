@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\Homework;
 use App\Models\HomeworkSubmission;
 use App\Models\SchoolClass;
+use App\Models\Score;
 use App\Models\Student;
 use App\Models\Subject;
 use App\Models\User;
@@ -205,5 +206,165 @@ class HomeworkApiTest extends TestCase
             ->assertJsonPath('data.id', $homework->id)
             ->assertJsonPath('data.submissions.0.student_id', $student->id)
             ->assertJsonPath('data.submissions.0.answer_text', 'Student submitted answer');
+    }
+
+    public function test_teacher_can_grade_submission_and_create_homework_auto_monthly_score(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $assignment = DB::table('teacher_class')->where('teacher_id', $teacher->id)->first();
+        $this->assertNotNull($assignment);
+        $teacherToken = $teacher->createToken('phpunit')->plainTextToken;
+
+        $student = Student::query()->where('class_id', (int) $assignment->class_id)->firstOrFail();
+        $homework = Homework::query()->create([
+            'class_id' => (int) $assignment->class_id,
+            'subject_id' => (int) $assignment->subject_id,
+            'title' => 'Grade Homework Monthly',
+            'question' => 'Solve and submit.',
+            'due_date' => '2026-04-30',
+            'file_attachments' => [],
+        ]);
+
+        $submission = HomeworkSubmission::query()->create([
+            'homework_id' => $homework->id,
+            'student_id' => $student->id,
+            'answer_text' => 'Monthly graded answer',
+            'submitted_at' => now(),
+        ]);
+
+        $response = $this->withToken($teacherToken)->postJson(
+            "/api/homeworks/{$homework->id}/submissions/{$submission->id}/grade",
+            [
+                'teacher_score' => 16,
+                'teacher_score_max' => 20,
+                'score_weight_percent' => 25,
+                'assessment_type' => 'monthly',
+                'month' => 4,
+                'academic_year' => '2026',
+                'teacher_feedback' => 'Good progress.',
+            ]
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('data.submission.id', $submission->id)
+            ->assertJsonPath('data.submission.score_assessment_type', 'monthly')
+            ->assertJsonPath('data.auto_score.period', 'homework-auto');
+
+        $submission->refresh();
+        $this->assertSame('monthly', $submission->score_assessment_type);
+        $this->assertSame(4, (int) $submission->score_month);
+        $this->assertSame('2026', $submission->score_academic_year);
+        $this->assertNotNull($submission->graded_at);
+        $this->assertSame((int) $teacher->id, (int) $submission->graded_by_user_id);
+
+        $autoScore = Score::query()
+            ->where('student_id', $student->id)
+            ->where('class_id', (int) $assignment->class_id)
+            ->where('subject_id', (int) $assignment->subject_id)
+            ->where('assessment_type', 'monthly')
+            ->where('month', 4)
+            ->whereNull('semester')
+            ->where('academic_year', '2026')
+            ->where('period', 'homework-auto')
+            ->first();
+
+        $this->assertNotNull($autoScore);
+        $this->assertEqualsWithDelta(80.0, (float) $autoScore->exam_score, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $autoScore->total_score, 0.01);
+    }
+
+    public function test_regrading_submission_moves_homework_auto_score_to_new_bucket(): void
+    {
+        $this->seed();
+
+        $teacher = User::query()->where('email', 'teacher@example.com')->firstOrFail();
+        $assignment = DB::table('teacher_class')->where('teacher_id', $teacher->id)->first();
+        $this->assertNotNull($assignment);
+        $teacherToken = $teacher->createToken('phpunit')->plainTextToken;
+
+        $student = Student::query()->where('class_id', (int) $assignment->class_id)->firstOrFail();
+        $homework = Homework::query()->create([
+            'class_id' => (int) $assignment->class_id,
+            'subject_id' => (int) $assignment->subject_id,
+            'title' => 'Grade Homework Rebucket',
+            'question' => 'Submit for rebucket test.',
+            'due_date' => '2026-05-01',
+            'file_attachments' => [],
+        ]);
+
+        $submission = HomeworkSubmission::query()->create([
+            'homework_id' => $homework->id,
+            'student_id' => $student->id,
+            'answer_text' => 'Submission for rebucket test',
+            'submitted_at' => now(),
+        ]);
+
+        $this->withToken($teacherToken)->postJson(
+            "/api/homeworks/{$homework->id}/submissions/{$submission->id}/grade",
+            [
+                'teacher_score' => 9,
+                'teacher_score_max' => 10,
+                'score_weight_percent' => 40,
+                'assessment_type' => 'monthly',
+                'month' => 3,
+                'academic_year' => '2026',
+            ]
+        )->assertOk();
+
+        $this->assertDatabaseHas('scores', [
+            'student_id' => $student->id,
+            'class_id' => (int) $assignment->class_id,
+            'subject_id' => (int) $assignment->subject_id,
+            'assessment_type' => 'monthly',
+            'month' => 3,
+            'semester' => null,
+            'academic_year' => '2026',
+            'period' => 'homework-auto',
+        ]);
+
+        $response = $this->withToken($teacherToken)->postJson(
+            "/api/homeworks/{$homework->id}/submissions/{$submission->id}/grade",
+            [
+                'teacher_score' => 18,
+                'teacher_score_max' => 20,
+                'score_weight_percent' => 60,
+                'assessment_type' => 'semester',
+                'semester' => 1,
+                'academic_year' => '2026',
+                'teacher_feedback' => 'Moved to semester bucket.',
+            ]
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('data.submission.score_assessment_type', 'semester')
+            ->assertJsonPath('data.auto_score.assessment_type', 'semester')
+            ->assertJsonPath('data.auto_score.semester', 1);
+
+        $this->assertDatabaseMissing('scores', [
+            'student_id' => $student->id,
+            'class_id' => (int) $assignment->class_id,
+            'subject_id' => (int) $assignment->subject_id,
+            'assessment_type' => 'monthly',
+            'month' => 3,
+            'academic_year' => '2026',
+            'period' => 'homework-auto',
+        ]);
+
+        $semesterAutoScore = Score::query()
+            ->where('student_id', $student->id)
+            ->where('class_id', (int) $assignment->class_id)
+            ->where('subject_id', (int) $assignment->subject_id)
+            ->where('assessment_type', 'semester')
+            ->where('semester', 1)
+            ->whereNull('month')
+            ->where('academic_year', '2026')
+            ->where('period', 'homework-auto')
+            ->first();
+
+        $this->assertNotNull($semesterAutoScore);
+        $this->assertEqualsWithDelta(90.0, (float) $semesterAutoScore->exam_score, 0.01);
+        $this->assertEqualsWithDelta(54.0, (float) $semesterAutoScore->total_score, 0.01);
     }
 }

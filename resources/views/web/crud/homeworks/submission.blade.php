@@ -4,6 +4,7 @@
     @php
         $role = (string) ($userRole ?? '');
         $isStudent = $role === 'student';
+        $isTeacher = $role === 'teacher';
         $isTeacherOrAdmin = in_array($role, ['super-admin', 'admin', 'teacher'], true);
         $homeworkId = (int) ($item['id'] ?? 0);
         $mySubmission = collect($item['submissions'] ?? [])
@@ -106,12 +107,34 @@
                         <th>Submitted At</th>
                         <th>Answer</th>
                         <th>Files</th>
+                        <th>Current Grade</th>
+                        @if($isTeacher)
+                            <th>Teacher Grading</th>
+                        @endif
                     </tr>
                 </thead>
                 <tbody>
                 @forelse($item['submissions'] ?? [] as $submission)
                     @php
+                        $submissionId = (int) ($submission['id'] ?? 0);
                         $submissionMedia = collect($submission['media'] ?? [])->filter(fn ($media) => ($media['category'] ?? '') === 'attachment')->values();
+                        $teacherScore = is_numeric($submission['teacher_score'] ?? null) ? (float) $submission['teacher_score'] : null;
+                        $teacherScoreMax = is_numeric($submission['teacher_score_max'] ?? null) ? (float) $submission['teacher_score_max'] : null;
+                        $weightPercent = is_numeric($submission['score_weight_percent'] ?? null) ? (float) $submission['score_weight_percent'] : null;
+                        $rawPercent = ($teacherScore !== null && $teacherScoreMax !== null && $teacherScoreMax > 0)
+                            ? round(($teacherScore / $teacherScoreMax) * 100, 2)
+                            : null;
+                        $weightedPercent = ($rawPercent !== null && $weightPercent !== null)
+                            ? round(($rawPercent * $weightPercent) / 100, 2)
+                            : null;
+                        $assessmentType = old('assessment_type', $submission['score_assessment_type'] ?? 'monthly');
+                        $currentMonth = old('score_month', $submission['score_month'] ?? now()->month);
+                        $currentSemester = old('score_semester', $submission['score_semester'] ?? 1);
+                        $currentAcademicYear = old('score_academic_year', $submission['score_academic_year'] ?? (string) now()->year);
+                        $currentTeacherScore = old('teacher_score', $submission['teacher_score'] ?? '');
+                        $currentTeacherScoreMax = old('teacher_score_max', $submission['teacher_score_max'] ?? 100);
+                        $currentWeightPercent = old('score_weight_percent', $submission['score_weight_percent'] ?? 100);
+                        $currentFeedback = old('teacher_feedback', $submission['teacher_feedback'] ?? '');
                     @endphp
                     <tr>
                         <td>{{ $submission['student']['user']['name'] ?? ($submission['student_id'] ?? '-') }}</td>
@@ -127,9 +150,74 @@
                                 @endforeach
                             </div>
                         </td>
+                        <td>
+                            @if($teacherScore !== null && $teacherScoreMax !== null)
+                                <div>{{ number_format($teacherScore, 2) }} / {{ number_format($teacherScoreMax, 2) }}</div>
+                                <div>Weight: {{ number_format((float) ($weightPercent ?? 0), 2) }}%</div>
+                                <div>Raw: {{ number_format((float) ($rawPercent ?? 0), 2) }}%</div>
+                                <div>Weighted: {{ number_format((float) ($weightedPercent ?? 0), 2) }}%</div>
+                                <div>
+                                    {{ ucfirst((string) ($submission['score_assessment_type'] ?? 'monthly')) }}
+                                    @if(($submission['score_assessment_type'] ?? 'monthly') === 'monthly' && ! empty($submission['score_month']))
+                                        (Month {{ $submission['score_month'] }})
+                                    @elseif(($submission['score_assessment_type'] ?? '') === 'semester' && ! empty($submission['score_semester']))
+                                        (Semester {{ $submission['score_semester'] }})
+                                    @endif
+                                </div>
+                                <div>Year: {{ $submission['score_academic_year'] ?? '-' }}</div>
+                                <div>Graded By: {{ $submission['graded_by']['name'] ?? '-' }}</div>
+                                <div>Graded At: {{ $submission['graded_at'] ?? '-' }}</div>
+                                <div>{{ $submission['teacher_feedback'] ?? '' }}</div>
+                            @else
+                                <span>-</span>
+                            @endif
+                        </td>
+                        @if($isTeacher)
+                            <td>
+                                <form method="POST" action="{{ route('panel.homeworks.grade', ['homework' => $homeworkId, 'submission' => $submissionId]) }}" class="panel panel-form" style="padding: 12px; min-width: 310px;">
+                                    @csrf
+                                    <div class="form-grid">
+                                        <div>
+                                            <label>Score</label>
+                                            <input type="number" name="teacher_score" step="0.01" min="0" value="{{ $currentTeacherScore }}" required>
+                                        </div>
+                                        <div>
+                                            <label>Max Score</label>
+                                            <input type="number" name="teacher_score_max" step="0.01" min="0.01" value="{{ $currentTeacherScoreMax }}" required>
+                                        </div>
+                                        <div>
+                                            <label>Weight %</label>
+                                            <input type="number" name="score_weight_percent" step="0.01" min="0" max="100" value="{{ $currentWeightPercent }}" required>
+                                        </div>
+                                        <div>
+                                            <label>Assessment</label>
+                                            <select name="assessment_type" required>
+                                                <option value="monthly" {{ $assessmentType === 'monthly' ? 'selected' : '' }}>Monthly</option>
+                                                <option value="semester" {{ $assessmentType === 'semester' ? 'selected' : '' }}>Semester</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label>Month (1-12)</label>
+                                            <input type="number" name="score_month" min="1" max="12" value="{{ $currentMonth }}">
+                                        </div>
+                                        <div>
+                                            <label>Semester (1-2)</label>
+                                            <input type="number" name="score_semester" min="1" max="2" value="{{ $currentSemester }}">
+                                        </div>
+                                        <div>
+                                            <label>Academic Year</label>
+                                            <input type="text" name="score_academic_year" value="{{ $currentAcademicYear }}" placeholder="2026">
+                                        </div>
+                                    </div>
+                                    <label>Feedback</label>
+                                    <textarea name="teacher_feedback" rows="2">{{ $currentFeedback }}</textarea>
+                                    <button type="submit" class="btn-space-top">Save Grade</button>
+                                </form>
+                            </td>
+                        @endif
                     </tr>
                 @empty
-                    <tr><td colspan="4">No submission yet.</td></tr>
+                    <tr><td colspan="{{ $isTeacher ? 6 : 5 }}">No submission yet.</td></tr>
                 @endforelse
                 </tbody>
             </table>

@@ -127,6 +127,24 @@ class HomeworkCrudController extends Controller
             ->with('success', 'បានដាក់កិច្ចការទៅគ្រូជោគជ័យ។');
     }
 
+    public function gradeSubmission(Request $request, int $homework, int $submission, InternalApiClient $api): RedirectResponse
+    {
+        $payload = $this->validateGradePayload($request);
+        $result = $api->post(
+            $request,
+            "/api/homeworks/{$homework}/submissions/{$submission}/grade",
+            $payload
+        );
+
+        if ($result['status'] !== 200) {
+            return back()->withInput()->withErrors($this->extractErrors($result));
+        }
+
+        return redirect()
+            ->away(route('panel.homeworks.submission', ['homework' => $homework], false))
+            ->with('success', 'បានដាក់ពិន្ទុកិច្ចការសិស្សរួចរាល់។');
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -194,5 +212,35 @@ class HomeworkCrudController extends Controller
         }
 
         return $payload;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function validateGradePayload(Request $request): array
+    {
+        $payload = $request->validate([
+            'teacher_score' => ['required', 'numeric', 'min:0'],
+            'teacher_score_max' => ['required', 'numeric', 'gt:0'],
+            'score_weight_percent' => ['required', 'numeric', 'between:0,100'],
+            'assessment_type' => ['required', 'in:monthly,semester'],
+            'score_month' => ['nullable', 'integer', 'between:1,12', 'required_if:assessment_type,monthly'],
+            'score_semester' => ['nullable', 'integer', 'between:1,2', 'required_if:assessment_type,semester'],
+            'score_academic_year' => ['nullable', 'string', 'max:20'],
+            'teacher_feedback' => ['nullable', 'string'],
+        ]);
+
+        $assessmentType = (string) ($payload['assessment_type'] ?? 'monthly');
+
+        return [
+            'teacher_score' => (float) $payload['teacher_score'],
+            'teacher_score_max' => (float) $payload['teacher_score_max'],
+            'score_weight_percent' => (float) $payload['score_weight_percent'],
+            'assessment_type' => $assessmentType,
+            'month' => $assessmentType === 'monthly' ? (int) ($payload['score_month'] ?? 0) : null,
+            'semester' => $assessmentType === 'semester' ? (int) ($payload['score_semester'] ?? 0) : null,
+            'academic_year' => (($year = trim((string) ($payload['score_academic_year'] ?? ''))) !== '') ? $year : null,
+            'teacher_feedback' => (($feedback = trim((string) ($payload['teacher_feedback'] ?? ''))) !== '') ? $feedback : null,
+        ];
     }
 }

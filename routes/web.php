@@ -266,6 +266,7 @@ Route::prefix('panel/homeworks')
         Route::get('/{homework}/edit', [HomeworkCrudController::class, 'edit'])->name('edit');
         Route::put('/{homework}', [HomeworkCrudController::class, 'update'])->name('update');
         Route::delete('/{homework}', [HomeworkCrudController::class, 'destroy'])->name('destroy');
+        Route::post('/{homework}/submissions/{submission}/grade', [HomeworkCrudController::class, 'gradeSubmission'])->name('grade');
     });
 
 Route::prefix('panel/homeworks')
